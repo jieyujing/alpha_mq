@@ -38,7 +38,7 @@ class TripleBarrierConfig:
     max_holding: int = 10  # 最大持有期
 
     # 路径质量惩罚
-    lamda: float = 1.0  # MAE 惩罚系数
+    mae_penalty: float = 1.0  # MAE 惩罚系数
 
     # T+1 对齐
     shift: int = 1
@@ -46,27 +46,20 @@ class TripleBarrierConfig:
     # 截面处理
     winsor_std: Optional[float] = 3.0
 
-    # Beta 中性化
-    beta_alpha: float = 0.5
-
 
 class TripleBarrierDataLoader:
     """
     Triple Barrier 目标数据加载器。
 
     生成基于 Triple Barrier Method 的路径质量 Target。
-    输出格式: pd.Series, MultiIndex(date, code), 值域 (0, 1)
+    输出格式: pd.Series, MultiIndex(date, code), 值域 (0.5/count, 1 - 0.5/count)
+    其中 count 为截面有效样本数。
     """
 
     def __init__(self, config: Optional[TripleBarrierConfig] = None) -> None:
         self.config = config or TripleBarrierConfig()
 
-    def load(
-        self,
-        close_df: pd.DataFrame,
-        market_close: Optional[pd.Series] = None,
-        beta_df: Optional[pd.DataFrame] = None,
-    ) -> pd.Series:
+    def load(self, close_df: pd.DataFrame) -> pd.Series:
         """
         构建 Triple Barrier Target。
 
@@ -74,15 +67,12 @@ class TripleBarrierDataLoader:
         ----------
         close_df : pd.DataFrame
             收盘价面板，index=date, columns=code
-        market_close : pd.Series, optional
-            市场基准收盘价，index=date
-        beta_df : pd.DataFrame, optional
-            Beta 面板，index=date, columns=code
 
         Returns
         -------
         pd.Series
-            MultiIndex(date, code), 值域 (0, 1)
+            MultiIndex(date, code), 值域 (0.5/count, 1 - 0.5/count)
+            其中 count 为截面有效样本数，近似均匀分布于 (0, 1)。
         """
         cfg = self.config
 
@@ -97,7 +87,7 @@ class TripleBarrierDataLoader:
         # Step 3: 计算 score
         # score = pnl * exp(-λ * |mae| / vol)
         mae_normalized = np.abs(mae_arr) / vol.values
-        score_arr = pnl_arr * np.exp(-cfg.lamda * mae_normalized)
+        score_arr = pnl_arr * np.exp(-cfg.mae_penalty * mae_normalized)
 
         # Step 4: 转换为 DataFrame
         score_df = pd.DataFrame(score_arr, index=close_df.index, columns=close_df.columns)
