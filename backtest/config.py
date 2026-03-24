@@ -47,8 +47,6 @@ def get_executor_config(
     generate_portfolio_metrics: bool = True,
     open_cost: float = 0.0015,
     close_cost: float = 0.0025,
-    min_cost: float = 5.0,
-    limit_threshold: float = 0.095,
 ) -> Dict[str, Any]:
     """
     获取 SimulatorExecutor 配置。
@@ -63,15 +61,16 @@ def get_executor_config(
         开仓成本（买入佣金）
     close_cost : float
         平仓成本（卖出佣金）
-    min_cost : float
-        最低佣金
-    limit_threshold : float
-        涨跌停限制
 
     Returns
     -------
     dict
         执行器配置字典
+
+    Notes
+    -----
+    min_cost 和 limit_threshold 是 exchange_kwargs 参数，应通过
+    get_backtest_config() 配置，而非执行器参数。
     """
     return {
         "class": "SimulatorExecutor",
