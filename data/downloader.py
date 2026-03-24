@@ -6,11 +6,8 @@
 from __future__ import annotations
 
 import logging
+import os
 from datetime import datetime
-from pathlib import Path
-from typing import Optional
-
-import polars as pl
 
 # 延迟导入 gm 以避免导入时的依赖问题
 gm = None  # type: ignore
@@ -18,7 +15,8 @@ gm = None  # type: ignore
 logger = logging.getLogger(__name__)
 
 CSI1000_INDEX = "SHSE.000852"
-GM_TOKEN = "478dc4635c5198dbfcc962ac3bb209e5327edbff"
+# 从环境变量获取 token，未设置时使用默认值（仅用于开发环境）
+GM_TOKEN = os.environ.get("GM_TOKEN", "478dc4635c5198dbfcc962ac3bb209e5327edbff")
 
 
 def _init_gm():
@@ -73,6 +71,6 @@ class CSI1000Downloader:
 
         constituents = _gm.stk_get_index_constituents(index=CSI1000_INDEX)
         if constituents is None or len(constituents) == 0:
-            raise ValueError(f"无法获取中证1000成分股列表")
+            raise ValueError("无法获取中证1000成分股列表")
 
         return constituents["symbol"].tolist()
