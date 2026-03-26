@@ -37,7 +37,7 @@ def extract_date_from_datetime(dt: Union[str, datetime, pd.Timestamp]) -> str:
     """从datetime对象中提取日期部分
 
     用于处理带有时间戳的datetime对象（如bob/eob字段），
-    只保留日期部分。
+    只保留日期部分。注意：保留原始时区的日期，不做UTC转换。
 
     Args:
         dt: 带有时间戳的日期
@@ -46,7 +46,6 @@ def extract_date_from_datetime(dt: Union[str, datetime, pd.Timestamp]) -> str:
         仅包含日期部分的字符串 (YYYY-MM-DD)
     """
     ts = pd.to_datetime(dt)
-    if ts.tzinfo is not None:
-        # 如果有时区信息，转换为naive datetime
-        ts = ts.tz_convert(None).tz_localize(None)
+    # 直接提取日期部分，不做时区转换
+    # 因为掘金数据的bob已经是当日0点，我们只需要提取日期
     return ts.strftime("%Y-%m-%d")
