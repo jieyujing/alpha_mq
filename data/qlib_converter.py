@@ -124,12 +124,18 @@ class QlibBinConverter:
         ])
 
     def preprocess_fundamentals(
-        self, df: pl.DataFrame, value_columns: list[str]
+        self, df: pl.DataFrame, value_columns: list[str],
+        date_column: str = "pub_date"
     ) -> pl.DataFrame:
         """预处理财务数据
 
         - 标准化symbol格式
-        - 选择披露日期和数值字段
+        - 选择日期字段和数值字段
+
+        Args:
+            df: 原始财务数据
+            value_columns: 需要保留的数值字段
+            date_column: 日期字段名 (pub_date用于财报，trade_date用于每日数据)
         """
         df = df.with_columns(
             pl.col("symbol")
@@ -138,13 +144,13 @@ class QlibBinConverter:
             .alias("symbol")
         )
 
-        # 确保pub_date是字符串格式
-        if "pub_date" in df.columns:
+        # 确保日期字段是字符串格式
+        if date_column in df.columns:
             df = df.with_columns(
-                pl.col("pub_date").cast(pl.String).alias("pub_date")
+                pl.col(date_column).cast(pl.String).alias(date_column)
             )
 
-        cols = ["symbol", "pub_date"] + [c for c in value_columns if c in df.columns]
+        cols = ["symbol", date_column] + [c for c in value_columns if c in df.columns]
         return df.select(cols)
 
     def merge_price_with_fundamentals(
@@ -152,6 +158,8 @@ class QlibBinConverter:
         price_df: pl.DataFrame,
         fund_df: pl.DataFrame,
         fund_columns: list[str],
+        date_column: str = "pub_date",
+        use_ffill: bool = True,
     ) -> pl.DataFrame:
         """合并价格与财务数据
 
@@ -161,22 +169,26 @@ class QlibBinConverter:
             price_df: 预处理后的价格数据
             fund_df: 预处理后的财务数据
             fund_columns: 需要合并的财务字段
+            date_column: 财务数据的日期字段 (pub_date或trade_date)
+            use_ffill: 是否执行前向填充 (财报数据需要，每日数据不需要)
 
         Returns:
             合并后的DataFrame
         """
-        # 确保日期类型
-        price_df = price_df.with_columns(
-            pl.col("date").str.to_date("%Y-%m-%d").alias("date")
-        )
-        fund_df = fund_df.with_columns(
-            pl.col("pub_date").str.to_date("%Y-%m-%d").alias("pub_date")
-        )
+        # 确保日期类型 - 只有字符串才需要转换
+        if price_df["date"].dtype == pl.String:
+            price_df = price_df.with_columns(
+                pl.col("date").str.to_date("%Y-%m-%d").alias("date")
+            )
+        if fund_df[date_column].dtype == pl.String:
+            fund_df = fund_df.with_columns(
+                pl.col(date_column).str.to_date("%Y-%m-%d").alias(date_column)
+            )
 
-        # 重命名pub_date为date用于join
-        fund_for_join = fund_df.rename({"pub_date": "date"})
+        # 重命名日期字段为date用于join
+        fund_for_join = fund_df.rename({date_column: "date"})
 
-        # 左连接：在披露日匹配财务数据
+        # 左连接：在日期匹配
         merged = price_df.join(
             fund_for_join,
             on=["symbol", "date"],
@@ -187,11 +199,12 @@ class QlibBinConverter:
         merged = merged.sort(["symbol", "date"])
 
         # 对财务字段执行ffill（按symbol分组）
-        for col in fund_columns:
-            if col in merged.columns:
-                merged = merged.with_columns(
-                    pl.col(col).forward_fill().over("symbol")
-                )
+        if use_ffill:
+            for col in fund_columns:
+                if col in merged.columns:
+                    merged = merged.with_columns(
+                        pl.col(col).forward_fill().over("symbol")
+                    )
 
         return merged
 
@@ -287,20 +300,34 @@ class QlibBinConverter:
 
             # 合并财务数据
             merged = stock_price
+
+            # 资产负债表：使用pub_date，需要FFill
             if "balance" in fund_data:
-                balance = fund_data["balance"].filter(pl.col("symbol").str.contains(symbol[2:]))
+                # 提取原始代码部分进行匹配 (SH600000 -> 600000)
+                orig_code = symbol[2:]  # 去掉SH/SZ前缀
+                balance = fund_data["balance"].filter(
+                    pl.col("symbol").str.ends_with(orig_code) |
+                    pl.col("symbol").str.contains(f"\\.{orig_code}")
+                )
                 if len(balance) > 0:
-                    balance = self.preprocess_fundamentals(balance, ["ttl_ast", "ttl_eqy"])
+                    balance = self.preprocess_fundamentals(balance, ["ttl_ast", "ttl_eqy"], "pub_date")
                     merged = self.merge_price_with_fundamentals(
-                        merged, balance, ["ttl_ast", "ttl_eqy"]
+                        merged, balance, ["ttl_ast", "ttl_eqy"],
+                        date_column="pub_date", use_ffill=True
                     )
 
+            # 估值指标：使用trade_date，每日数据不需要FFill
             if "tdi" in fund_data:
-                tdi = fund_data["tdi"].filter(pl.col("symbol").str.contains(symbol[2:]))
+                orig_code = symbol[2:]
+                tdi = fund_data["tdi"].filter(
+                    pl.col("symbol").str.ends_with(orig_code) |
+                    pl.col("symbol").str.contains(f"\\.{orig_code}")
+                )
                 if len(tdi) > 0:
-                    tdi = self.preprocess_fundamentals(tdi, ["pe_ttm", "pb_lyr"])
+                    tdi = self.preprocess_fundamentals(tdi, ["pe_ttm", "pb_lyr"], "trade_date")
                     merged = self.merge_price_with_fundamentals(
-                        merged, tdi, ["pe_ttm", "pb_lyr"]
+                        merged, tdi, ["pe_ttm", "pb_lyr"],
+                        date_column="trade_date", use_ffill=False
                     )
 
             # 导出CSV
