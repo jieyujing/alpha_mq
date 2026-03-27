@@ -2,6 +2,8 @@ import pandas as pd
 from pathlib import Path
 from gm.api import set_token, history
 from data.utils.env_utils import get_gm_token
+import subprocess
+import sys
 
 def fetch_index_data(symbol="SHSE.000852", start="2015-01-01"):
     """
@@ -85,12 +87,69 @@ def update_metadata(qlib_dir: Path, symbol='SH000852', dates=None):
     if dates:
         if cal_path.exists():
             with open(cal_path, 'r', encoding='utf-8') as f:
-                existing_dates = set(l.strip() for l in f.readlines() if l.strip())
+                existing_dates = set(line.strip() for line in f.readlines() if line.strip())
             all_dates = sorted(existing_dates | set(dates))
         else:
             all_dates = sorted(set(dates))
             
         with open(cal_path, 'w', encoding='utf-8') as f:
-            for d in all_dates:
-                f.write(f"{d}\n")
+            for dt in all_dates:
+                f.write(f"{dt}\n")
     print("元数据更新完成。")
+
+def run_dump(csv_path: Path, qlib_dir: Path):
+    """
+    通过 subprocess 调用 dump_bin.py 将 CSV 转换为 Qlib 二进制格式。
+    """
+    print(f"正在调用 dump_bin.py 转换 {csv_path.name}...")
+    dump_script = Path("data/scripts/dump_bin.py")
+    
+    # 构造命令
+    # dump_all 会扫描整个 data_path 下的所有 .csv 文件并将其转换为 Qlib 二进制格式。
+    # 这里我们指向 csv_path.parent (data/csv_source/)。
+    # 为了避免全量重新转换，Qlib 的 dump_all 逻辑通常会覆盖现有文件。
+    # 因为我们只想补丁中证1000，这里我们假设 csv_source 下只有当前这一个文件，
+    # 或者我们通过 --limit_nums 限制，或者 dump_bin 自己的逻辑就是每个文件独立。
+    cmd = [
+        sys.executable, str(dump_script), "dump_all",
+        "--data_path", str(csv_path.parent),
+        "--qlib_dir", str(qlib_dir),
+        "--include_fields", "open,high,low,close,volume,amount",
+        "--symbol_field_name", "symbol"
+    ]
+    
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        print("转换出错：")
+        print(result.stderr)
+    else:
+        print("二进制转换完成。")
+        print(result.stdout)
+
+def main():
+    """
+    主程序流程：下载 -> 转换 CSV -> 同步元数据 -> 二进制 Dump。
+    """
+    qlib_dir = Path("data/qlib_data")
+    csv_file = Path("data/csv_source/SH000852.csv")
+    
+    # 1. 下载
+    try:
+        df = fetch_index_data(symbol="SHSE.000852", start="2015-01-01")
+    except Exception as e:
+        print(f"下载失败: {e}")
+        return
+
+    # 2. 处理并保存 CSV
+    dates = process_to_csv(df, csv_file)
+
+    # 3. 同步元数据
+    update_metadata(qlib_dir, 'SH000852', dates)
+
+    # 4. 执行二进制 Dump
+    run_dump(csv_file, qlib_dir)
+    
+    print("\n[成功] 中证1000指数数据补丁已完成。")
+
+if __name__ == "__main__":
+    main()
