@@ -41,3 +41,56 @@ def process_to_csv(df, output_path: Path):
     output_path.parent.mkdir(parents=True, exist_ok=True)
     df_clean.to_csv(output_path, index=False)
     return df_clean['date'].unique().tolist()
+
+def update_metadata(qlib_dir: Path, symbol='SH000852', dates=None):
+    """
+    同步 Qlib 的 instruments 和 calendars。
+    """
+    print(f"正在更新 Qlib 元数据 ({symbol})...")
+    # 1. 更新 instruments/all.txt
+    inst_path = qlib_dir / "instruments" / "all.txt"
+    inst_path.parent.mkdir(parents=True, exist_ok=True)
+    
+    start_date = dates[0]
+    end_date = dates[-1]
+    new_line = f"{symbol}\t{start_date}\t{end_date}\n"
+    
+    if inst_path.exists():
+        with open(inst_path, 'r', encoding='utf-8') as f:
+            lines = f.readlines()
+        
+        # 查找是否已有该符号，有则更新，无则追加
+        found = False
+        new_lines = []
+        for line in lines:
+            if line.startswith(f"{symbol}\t"):
+                new_lines.append(new_line)
+                found = True
+            else:
+                new_lines.append(line)
+        
+        if not found:
+            new_lines.append(new_line)
+            
+        with open(inst_path, 'w', encoding='utf-8') as f:
+            f.writelines(new_lines)
+    else:
+        with open(inst_path, 'w', encoding='utf-8') as f:
+            f.write(new_line)
+
+    # 2. 更新 calendars/day.txt
+    cal_path = qlib_dir / "calendars" / "day.txt"
+    cal_path.parent.mkdir(parents=True, exist_ok=True)
+    
+    if dates:
+        if cal_path.exists():
+            with open(cal_path, 'r', encoding='utf-8') as f:
+                existing_dates = set(l.strip() for l in f.readlines() if l.strip())
+            all_dates = sorted(existing_dates | set(dates))
+        else:
+            all_dates = sorted(set(dates))
+            
+        with open(cal_path, 'w', encoding='utf-8') as f:
+            for d in all_dates:
+                f.write(f"{d}\n")
+    print("元数据更新完成。")
