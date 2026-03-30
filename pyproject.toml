@@ -8,12 +8,19 @@ dependencies = [
     "pyqlib",
     "lightgbm",
     "polars",
-    "pandas",
-    "numpy",
+    "pandas>=2.0.0,<2.2.0",
+    "numpy<2.0.0",
     "scipy",
     "scikit-learn",
     "joblib",
     "protobuf<=3.20.3",
+    "pyarrow>=23.0.1",
+    "tqdm>=4.67.3",
+    "gm>=3.0.0; sys_platform != 'darwin'",
+    "fire>=0.7.1",
+    "loguru>=0.7.3",
+    "plotly>=6.6.0",
+    "statsmodels>=0.14.6",
 ]
 
 [project.optional-dependencies]
