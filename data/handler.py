@@ -47,6 +47,18 @@ class Alpha158PathTargetHandler(Alpha158):
         return [], []
 
     def fetch(self, *args, **kwargs):
+        """
+        获取 Alpha158 features + Path Target label.
+
+        Override Alpha158.fetch() to merge custom path_target label.
+
+        Returns
+        -------
+        pd.DataFrame
+            MultiIndex columns with FEATURE and LABEL levels.
+            FEATURE: Alpha158 因子
+            LABEL: path_target (路径质量评分, 值域 0-1)
+        """
         # 1. Fetch Alpha158 features
         df = super().fetch(*args, **kwargs)
 
@@ -71,6 +83,14 @@ class Alpha158PathTargetHandler(Alpha158):
 
         # Task 3: 修复 benchmark 参数化 - 使用 self.benchmark
         bench_close = D.features([self.benchmark], ["$close"], start_time, end_time)
+
+        # Task 4: 添加数据缺失处理 - benchmark 数据检查
+        if bench_close.empty:
+            raise ValueError(
+                f"No benchmark data found for {self.benchmark} "
+                f"between {start_time} and {end_time}"
+            )
+
         bench_wide = bench_close.unstack(level=0)
         bench_wide.columns = bench_wide.columns.get_level_values(1)
         bench_wide = bench_wide.reset_index().rename(columns={"datetime": "date"})
