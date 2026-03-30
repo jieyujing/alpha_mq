@@ -142,9 +142,10 @@ if __name__ == "__main__":
         par = PortAnaRecord(recorder, port_analysis_config, "day")
         par.generate()
 
-        # --- 可视化与 MLflow 深度集成 ---
+        # --- 可视化图表输出到本地 ---
+        os.makedirs(OUTPUT_DIR, exist_ok=True)
         try:
-            print("正在生成可视化图表并输出到 MLflow...")
+            print(f"正在生成可视化图表并输出到 {OUTPUT_DIR}...")
             # 从 recorder 加载所需数据
             report_normal = recorder.load_object("portfolio_analysis/report_normal_1day.pkl")
             pred_df = recorder.load_object("pred.pkl")
@@ -163,7 +164,7 @@ if __name__ == "__main__":
             try:
                 fig_port = analysis_position.report_graph(report_normal, show_notebook=False)
                 # tuple 解包: report_graph 返回一个包含两张图的 tuple (return_graph, turnover_graph)
-                mlflow.log_figure(fig_port[0], "visualizations/portfolio_cumulative_return.html")
+                fig_port[0].write_html(f"{OUTPUT_DIR}/portfolio_cumulative_return.html")
             except Exception as e:
                 logging.warning(f"生成回测图表失败: {e}")
 
@@ -172,7 +173,7 @@ if __name__ == "__main__":
                 fig_model = analysis_model.model_performance_graph(pred_label, show_notebook=False)
                 # model_performance_graph 返回一个 list 的 go.Figure
                 for i, fig in enumerate(fig_model):
-                    mlflow.log_figure(fig, f"visualizations/model_performance_ic_rankic_{i}.html")
+                    fig.write_html(f"{OUTPUT_DIR}/model_performance_ic_rankic_{i}.html")
             except Exception as e:
                 logging.warning(f"生成模型表现图表失败: {e}")
 
@@ -180,7 +181,7 @@ if __name__ == "__main__":
             try:
                 fig_score = analysis_position.score_ic_graph(pred_label, show_notebook=False)
                 # 返回一个 tuple/list
-                mlflow.log_figure(fig_score[0], "visualizations/portfolio_score_ic.html")
+                fig_score[0].write_html(f"{OUTPUT_DIR}/portfolio_score_ic.html")
             except Exception as e:
                 logging.warning(f"生成分层收益率图表失败: {e}")
 
