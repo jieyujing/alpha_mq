@@ -15,9 +15,12 @@ from qlib.workflow import R
 from qlib.workflow.record_temp import SignalRecord, PortAnaRecord, SigAnaRecord
 
 import logging
-import mlflow
+import os
 import pandas as pd
 from qlib.contrib.report import analysis_model, analysis_position
+
+# 输出目录配置
+OUTPUT_DIR = "outputs/visualizations"
 
 # 自定义中证 1000 配置
 CSI1000_BENCH = "SH000852"  # 中证 1000 基准
