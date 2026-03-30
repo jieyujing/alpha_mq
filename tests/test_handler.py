@@ -28,7 +28,6 @@ class TestAlpha158PathTargetHandler:
 
     def test_handler_init_with_defaults(self, qlib_initialized):
         """测试默认参数初始化"""
-        _ = qlib_initialized  # 触发 qlib 初始化
         # 使用少量 instruments 避免 qlib "all" instruments 问题
         handler = Alpha158PathTargetHandler(
             start_time="2024-01-01",
@@ -41,7 +40,6 @@ class TestAlpha158PathTargetHandler:
 
     def test_handler_init_with_custom_config(self, qlib_initialized):
         """测试自定义参数初始化"""
-        _ = qlib_initialized  # 触发 qlib 初始化
         custom_config = PathTargetConfig(
             vol_window=30,
             k_upper=1.5,
@@ -62,7 +60,6 @@ class TestAlpha158PathTargetHandler:
 
     def test_handler_init_with_custom_beta_window(self, qlib_initialized):
         """测试自定义 beta_window 参数"""
-        _ = qlib_initialized  # 触发 qlib 初始化
         handler = Alpha158PathTargetHandler(
             beta_window=30,
             start_time="2024-01-01",
@@ -74,7 +71,6 @@ class TestAlpha158PathTargetHandler:
 
     def test_handler_target_cfg_defaults(self, qlib_initialized):
         """测试 target_cfg 使用 PathTargetConfig 默认值"""
-        _ = qlib_initialized  # 触发 qlib 初始化
         handler = Alpha158PathTargetHandler(
             start_time="2024-01-01",
             end_time="2024-01-31",
@@ -90,7 +86,6 @@ class TestAlpha158PathTargetHandler:
 
     def test_handler_fetch_returns_multiindex(self, qlib_initialized):
         """测试 fetch 返回 MultiIndex DataFrame"""
-        _ = qlib_initialized  # 触发 qlib 初始化
         handler = Alpha158PathTargetHandler(
             start_time="2024-01-01",
             end_time="2024-01-31",
@@ -116,7 +111,6 @@ class TestAlpha158PathTargetHandler:
 
     def test_handler_fetch_with_instruments_list(self, qlib_initialized):
         """测试使用 instruments 列表的 fetch"""
-        _ = qlib_initialized  # 触发 qlib 初始化
         # 使用少量 instruments 进行快速测试
         instruments = ["SH600006", "SH600012"]
         start_time = "2024-01-01"
@@ -141,7 +135,6 @@ class TestAlpha158PathTargetHandler:
 
     def test_handler_fetch_label_range_with_short_holding(self, qlib_initialized):
         """测试短持有期的 label 范围"""
-        _ = qlib_initialized  # 触发 qlib 初始化
         # 使用极短的持有期和更宽松的屏障
         cfg = PathTargetConfig(
             max_holding=3,
@@ -176,7 +169,6 @@ class TestPathTargetConfigIntegration:
 
     def test_config_passed_correctly(self, qlib_initialized):
         """测试配置正确传递给 Handler"""
-        _ = qlib_initialized  # 触发 qlib 初始化
         config = PathTargetConfig(
             vol_window=15,
             k_upper=3.0,
@@ -202,7 +194,6 @@ class TestPathTargetConfigIntegration:
 
     def test_none_config_uses_defaults(self, qlib_initialized):
         """测试 None 配置使用默认值"""
-        _ = qlib_initialized  # 触发 qlib 初始化
         handler = Alpha158PathTargetHandler(
             path_target_config=None,
             start_time="2024-01-01",
@@ -215,3 +206,38 @@ class TestPathTargetConfigIntegration:
         assert handler.target_cfg.vol_window == default_config.vol_window
         assert handler.target_cfg.k_upper == default_config.k_upper
         assert handler.target_cfg.max_holding == default_config.max_holding
+
+
+class TestErrorHandler:
+    """测试 Handler 错误处理"""
+
+    def test_empty_instruments_raises_error(self, qlib_initialized):
+        """测试空 instruments 列表抛出错误"""
+        handler = Alpha158PathTargetHandler(
+            start_time="2024-01-01",
+            end_time="2024-01-31",
+            instruments=[],  # 空列表
+        )
+        with pytest.raises((ValueError, KeyError)):
+            handler.fetch()
+
+    def test_invalid_benchmark_raises_error(self, qlib_initialized):
+        """测试无效 benchmark 代码抛出错误"""
+        handler = Alpha158PathTargetHandler(
+            benchmark="INVALID_CODE",
+            start_time="2024-01-01",
+            end_time="2024-01-31",
+            instruments=["SH600006"],
+        )
+        with pytest.raises((ValueError, KeyError)):
+            handler.fetch()
+
+    def test_no_data_in_range(self, qlib_initialized):
+        """测试日期范围无数据时抛出错误"""
+        handler = Alpha158PathTargetHandler(
+            start_time="2099-01-01",  # 未来日期，无数据
+            end_time="2099-01-31",
+            instruments=["SH600006"],
+        )
+        with pytest.raises(ValueError, match="No close data found"):
+            handler.fetch()
