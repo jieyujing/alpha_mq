@@ -1,5 +1,6 @@
 import sys
 from pathlib import Path
+from typing import Optional
 
 # Task 1: 修复导入路径 - 将项目根目录添加到 sys.path
 _root = Path(__file__).parent.parent
@@ -7,7 +8,6 @@ if str(_root) not in sys.path:
     sys.path.insert(0, str(_root))
 
 import pandas as pd
-import numpy as np
 import polars as pl
 from qlib.contrib.data.handler import Alpha158
 from path_target import PathTargetBuilder, PathTargetConfig
@@ -32,7 +32,7 @@ class Alpha158PathTargetHandler(Alpha158):
     def __init__(
         self,
         benchmark: str = "SH000852",
-        path_target_config: PathTargetConfig = None,
+        path_target_config: Optional[PathTargetConfig] = None,
         beta_window: int = 60,
         **kwargs
     ):
