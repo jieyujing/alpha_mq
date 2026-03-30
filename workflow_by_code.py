@@ -47,19 +47,19 @@ CSI1000_GBDT_TASK = {
         "module_path": "qlib.data.dataset",
         "kwargs": {
             "handler": {
-                "class": "Alpha158",
-                "module_path": "qlib.contrib.data.handler",
+                "class": "Alpha158PathTargetHandler",
+                "module_path": "data.handler",
                 "kwargs": {
-                    "start_time": "2015-01-05",  # 数据起始日期
-                    "end_time": "2026-03-26",    # 数据截止日期
+                    "start_time": "2015-01-05",
+                    "end_time": "2026-03-26",
                     "fit_start_time": "2015-01-05",
                     "fit_end_time": "2022-12-31",
                     "instruments": CSI1000_MARKET,
-                    # 过滤停牌或无交易数据的样本
+                    "benchmark": CSI1000_BENCH,
                     "filter_pipe": [
                         {
                             "filter_type": "ExpressionDFilter",
-                            "rule_expression": "$volume > 0",  # 成交量大于 0 代表真正有交易（非停牌）
+                            "rule_expression": "$volume > 0",
                             "filter_start_time": None,
                             "filter_end_time": None,
                             "keep": True,
