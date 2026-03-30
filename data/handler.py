@@ -14,15 +14,16 @@ from path_target import PathTargetBuilder, PathTargetConfig
 from qlib.data import D
 
 
-def _load_instruments(instruments: Union[str, List[str]], provider_uri: str) -> List[str]:
+def _load_instruments(instruments: Optional[Union[str, List[str]]], provider_uri: str) -> List[str]:
     """
     Load instruments list from file if instruments is a string market name.
 
     Parameters
     ----------
-    instruments : str or list
+    instruments : str or list or None
         If str, treat as market name and load from instruments/{market}.txt
         If list, return as-is
+        If None, return empty list
     provider_uri : str
         Path to qlib data directory
 
@@ -30,6 +31,9 @@ def _load_instruments(instruments: Union[str, List[str]], provider_uri: str) -> 
     -------
     list of instrument codes
     """
+    if instruments is None:
+        return []
+
     if isinstance(instruments, list):
         return instruments
 
@@ -40,7 +44,7 @@ def _load_instruments(instruments: Union[str, List[str]], provider_uri: str) -> 
         return df[0].tolist()
     else:
         # Fall back to trying as a single instrument code
-        return [instruments]
+        return [instruments]  # type: ignore
 
 
 # Task 2: 重命名类为 Alpha158PathTargetHandler
@@ -97,9 +101,9 @@ class Alpha158PathTargetHandler(Alpha158):
         end_time = self.end_time
 
         # Convert instruments to list if needed (qlib D.features expects list)
-        from qlib import get_data_uri
-        provider_uri = str(get_data_uri())
-        instruments_list = _load_instruments(instruments, provider_uri)
+        from qlib.config import C
+        provider_uri = C.provider_uri.get(C.DEFAULT_FREQ, "data/qlib_data")
+        instruments_list = _load_instruments(instruments, str(provider_uri))
 
         # Fetch close price
         raw_close = D.features(instruments_list, ["$close"], start_time, end_time)
