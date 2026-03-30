@@ -161,10 +161,11 @@ if __name__ == "__main__":
             pred_label = pd.concat([pred_df, label_df], axis=1, sort=True).reindex(pred_df.index)
 
             # 1. 回测图表 (收益率与最大回撤)
+            figures = []
             try:
                 fig_port = analysis_position.report_graph(report_normal, show_notebook=False)
                 # tuple 解包: report_graph 返回一个包含两张图的 tuple (return_graph, turnover_graph)
-                fig_port[0].write_html(f"{OUTPUT_DIR}/portfolio_cumulative_return.html")
+                figures.append(fig_port[0])
             except Exception as e:
                 logging.warning(f"生成回测图表失败: {e}")
 
@@ -172,8 +173,7 @@ if __name__ == "__main__":
             try:
                 fig_model = analysis_model.model_performance_graph(pred_label, show_notebook=False)
                 # model_performance_graph 返回一个 list 的 go.Figure
-                for i, fig in enumerate(fig_model):
-                    fig.write_html(f"{OUTPUT_DIR}/model_performance_ic_rankic_{i}.html")
+                figures.extend(fig_model)
             except Exception as e:
                 logging.warning(f"生成模型表现图表失败: {e}")
 
@@ -181,9 +181,19 @@ if __name__ == "__main__":
             try:
                 fig_score = analysis_position.score_ic_graph(pred_label, show_notebook=False)
                 # 返回一个 tuple/list
-                fig_score[0].write_html(f"{OUTPUT_DIR}/portfolio_score_ic.html")
+                figures.append(fig_score[0])
             except Exception as e:
                 logging.warning(f"生成分层收益率图表失败: {e}")
+
+            # 合并所有图表为单个 HTML 文件
+            if figures:
+                with open(f"{OUTPUT_DIR}/report.html", "w", encoding="utf-8") as f:
+                    f.write("<html><head><meta charset='utf-8'><title>Qlib 回测报告</title></head><body>")
+                    for i, fig in enumerate(figures):
+                        # 只在第一个图表加载 plotly.js
+                        f.write(fig.to_html(include_plotlyjs='cdn' if i == 0 else False, full_html=False))
+                    f.write("</body></html>")
+                print(f"报告已生成: {OUTPUT_DIR}/report.html")
 
         except Exception as e:
             logging.warning(f"数据提取失败，跳过可视化流程: {e}")
