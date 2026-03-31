@@ -260,13 +260,24 @@ class PathTargetBuilder:
         )
         vol_np = np.clip(vol_np, cfg.vol_min, None)
 
-        # ── Step 2: Triple Barrier 路径扫描 ─────────────────────
-        pnl_arr, mae_arr, hold_len_arr = self._barrier_scan(close_np, vol_np, cfg)
+        # ── Step 2: Triple Barrier 路径扫描 (Numba JIT) ─────────
+        pnl_arr, mae_arr, hold_len_arr = _barrier_scan_numba(
+            close_np.astype(np.float64),
+            vol_np.astype(np.float64),
+            cfg.k_upper,
+            cfg.k_lower,
+            cfg.max_holding,
+            cfg.shift
+        )
 
-        # ── Step 3: 市场 pnl（匹配个股持有期）──────────────────
+        # ── Step 3: 市场 pnl（匹配个股持有期，Numba JIT）───────
         mkt_col = market_close.columns[1]
         mkt_np = market_close.select(mkt_col).to_numpy().flatten()
-        mkt_pnl_arr = self._compute_market_pnl_matched(mkt_np, hold_len_arr, cfg)
+        mkt_pnl_arr = _compute_market_pnl_numba(
+            mkt_np.astype(np.float64),
+            hold_len_arr,
+            cfg.shift
+        )
 
         # ── Step 4: Soft beta-neutral ───────────────────────────
         #   pnl_adj = pnl_i - α * β_i * pnl_m
