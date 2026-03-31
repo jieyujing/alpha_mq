@@ -8,6 +8,14 @@ Qlib provides two kinds of interfaces.
 The interface of (1) is `qrun XXX.yaml`.  The interface of (2) is script like this, which nearly does the same thing as `qrun XXX.yaml`
 """
 
+import os
+# 设置环境变量以确保子进程也能屏蔽 Gym 告警
+os.environ["PYTHONWARNINGS"] = "ignore::UserWarning:gym,ignore:.*Gym has been unmaintained since 2022.*"
+
+import warnings
+warnings.filterwarnings("ignore", category=UserWarning, module="gym")
+warnings.filterwarnings("ignore", message=".*Gym has been unmaintained since 2022.*")
+
 import qlib
 from qlib.constant import REG_CN
 from qlib.utils import init_instance_by_config, flatten_dict
@@ -24,7 +32,7 @@ OUTPUT_DIR = "outputs/visualizations"
 
 # 自定义中证 1000 配置
 CSI1000_BENCH = "SH000852"  # 中证 1000 基准
-CSI1000_MARKET = "all"      # 对应 instruments/all.txt
+CSI1000_MARKET = "all"  # 使用完整1000股票数据集
 
 CSI1000_GBDT_TASK = {
     "model": {
@@ -39,7 +47,8 @@ CSI1000_GBDT_TASK = {
             "lambda_l2": 580.9768,
             "max_depth": 8,
             "num_leaves": 210,
-            "num_threads": 20,
+            "num_threads": None,
+            "verbosity": 1,
         },
     },
     "dataset": {
@@ -77,9 +86,15 @@ CSI1000_GBDT_TASK = {
 }
 
 if __name__ == "__main__":
-    # 使用本地 qlib 数据
+    # 使用本地 qlib 数据,启用缓存优化内存使用
     provider_uri = "data/qlib_data"
-    qlib.init(provider_uri=provider_uri, region=REG_CN)
+    qlib.init(
+        provider_uri=provider_uri,
+        region=REG_CN,
+        expression_cache="DiskExpressionCache",
+        dataset_cache="DiskDatasetCache",
+        mem_cache_size_limit=5000,  # 限制内存缓存500MB
+    )
 
     # 从自定义配置初始化模型和数据集
     model = init_instance_by_config(CSI1000_GBDT_TASK["model"])
