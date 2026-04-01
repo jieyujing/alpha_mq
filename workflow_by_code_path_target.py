@@ -21,6 +21,22 @@ from qlib.constant import REG_CN
 from qlib.utils import init_instance_by_config, flatten_dict
 from qlib.workflow import R
 from qlib.workflow.record_temp import SignalRecord, PortAnaRecord, SigAnaRecord
+from qlib.contrib.strategy import TopkDropoutStrategy
+from qlib.backtest.decision import TradeDecisionWO
+
+class PeriodicTopkDropoutStrategy(TopkDropoutStrategy):
+    def __init__(self, period=1, **kwargs):
+        super().__init__(**kwargs)
+        self.period = period
+
+    def generate_trade_decision(self, execute_result=None):
+        # 仅在指定的周期（如每5天）生成交易决策
+        if self.trade_calendar.get_trade_step() % self.period == 0:
+            return super().generate_trade_decision(execute_result)
+        else:
+            # 非调仓日，不产生任何订单
+            return TradeDecisionWO([], self)
+
 
 import logging
 import os
@@ -36,19 +52,17 @@ CSI1000_MARKET = "all"  # 使用完整1000股票数据集
 
 CSI1000_GBDT_TASK = {
     "model": {
-        "class": "LGBRankingModel",
-        "module_path": "model.lgbm_ranking",
+        "class": "LGBModel",
+        "module_path": "qlib.contrib.model.gbdt",
         "kwargs": {
-            "objective": "lambdarank",
-            "metric": "ndcg",
-            "eval_at": [3, 5, 10],      # NDCG 考查 TopK
+            "loss": "mse",
             "colsample_bytree": 0.8879,
             "learning_rate": 0.0421,
             "subsample": 0.8789,
             "lambda_l1": 205.6999,
             "lambda_l2": 580.9768,
             "max_depth": 8,
-            "num_leaves": 50,
+            "num_leaves": 210,
             "num_threads": None,
             "verbosity": 1,
         },
@@ -58,8 +72,9 @@ CSI1000_GBDT_TASK = {
         "module_path": "qlib.data.dataset",
         "kwargs": {
             "handler": {
-                "class": "Alpha158RankingHandler",
-                "module_path": "data.handler",
+                # 使用固定 beta 版本 (beta=1)，省去 rolling beta 计算
+                "class": "Alpha158FixedBetaHandler",
+                "module_path": "data.handler_fixed_beta",
                 "kwargs": {
                     "start_time": "2015-01-05",
                     "end_time": "2026-03-26",
@@ -67,6 +82,7 @@ CSI1000_GBDT_TASK = {
                     "fit_end_time": "2022-12-31",
                     "instruments": CSI1000_MARKET,
                     "benchmark": CSI1000_BENCH,
+                    "beta_alpha": 0.5,
                     "filter_pipe": [
                         {
                             "filter_type": "ExpressionDFilter",
@@ -93,9 +109,9 @@ if __name__ == "__main__":
     qlib.init(
         provider_uri=provider_uri,
         region=REG_CN,
-        expression_cache=None,  # 禁用缓存以确保代码变更生效
-        dataset_cache=None,     # 禁用缓存以确保特征数量一致
-        mem_cache_size_limit=5000,
+        expression_cache="DiskExpressionCache",
+        dataset_cache="DiskDatasetCache",
+        mem_cache_size_limit=5000,  # 限制内存缓存500MB
     )
 
     # 从自定义配置初始化模型和数据集
@@ -112,12 +128,13 @@ if __name__ == "__main__":
             },
         },
         "strategy": {
-            "class": "TopkDropoutStrategy",
-            "module_path": "qlib.contrib.strategy.signal_strategy",
+            "class": "PeriodicTopkDropoutStrategy",
+            "module_path": "__main__",
             "kwargs": {
                 "signal": (model, dataset),
                 "topk": 3,      # 持仓 3 只股票
                 "n_drop": 1,     # 跌出前 2 名即换仓
+                "period": 5,    # 每 5 天调仓一次
             },
         },
         "backtest": {
