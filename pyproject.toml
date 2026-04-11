@@ -5,9 +5,13 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "alphalens",
     "gm>=3.0.183; sys_platform != 'darwin'",
     "pandas>=3.0.2",
     "pytest>=9.0.3",
     "tenacity>=9.1.4",
     "tqdm>=4.67.3",
 ]
+
+[tool.uv.sources]
+alphalens = { git = "https://gitee.com/yunjinqi/alphalens.git" }
