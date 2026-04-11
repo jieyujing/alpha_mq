@@ -15,7 +15,7 @@ name = "alpha-mq"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
-    { name = "gm" },
+    { name = "gm", marker = "sys_platform != 'darwin'" },
     { name = "pandas" },
     { name = "pytest" },
     { name = "tenacity" },
@@ -24,7 +24,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "gm", specifier = ">=3.0.183" },
+    { name = "gm", marker = "sys_platform != 'darwin'", specifier = ">=3.0.183" },
     { name = "pandas", specifier = ">=3.0.2" },
     { name = "pytest", specifier = ">=9.0.3" },
     { name = "tenacity", specifier = ">=9.1.4" },

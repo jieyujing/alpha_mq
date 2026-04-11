@@ -5,7 +5,7 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "gm>=3.0.183",
+    "gm>=3.0.183; sys_platform != 'darwin'",
     "pandas>=3.0.2",
     "pytest>=9.0.3",
     "tenacity>=9.1.4",
