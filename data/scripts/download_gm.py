@@ -171,9 +171,9 @@ def run_download_workflow(token, start_date, end_date, index_code='SHSE.000852')
     # 财务报表通常按季度，这里我们根据日期范围拉取
     logging.info("Downloading Fundamental reports...")
     fundamental_tasks = [
-        ("balance", stk_get_fundamentals_balance, "total_assets,total_liabilities,total_shareholders_equity"),
-        ("income", stk_get_fundamentals_income, "total_operating_revenue,operating_profit,net_profit"),
-        ("cashflow", stk_get_fundamentals_cashflow, "net_cash_flows_from_oper_act,net_cash_flows_from_inv_act,net_cash_flows_from_fin_act")
+        ("balance", stk_get_fundamentals_balance, "ttl_ast,ttl_liab,ttl_eqy,ttl_eqy_pcom,paid_in_cptl,ret_prof"),
+        ("income", stk_get_fundamentals_income, "inc_oper,cost_oper,net_prof,net_prof_pcom,oper_prof,ttl_prof"),
+        ("cashflow", stk_get_fundamentals_cashflow, "net_cf_oper,net_cf_inv,net_cf_fin,net_incr_cash_eq")
     ]
     
     for name, func, f_fields in fundamental_tasks:
