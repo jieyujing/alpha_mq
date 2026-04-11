@@ -99,12 +99,23 @@ def download_category_data(base_pool, category_name, fetch_func, limiter, start_
     for symbol in tqdm(to_download, desc=f"Downloading {category_name}"):
         limiter.wait()
         try:
-            kwargs = {
-                'symbol': symbol,
-                'start_date': start_date,
-                'end_date': end_date,
-                'df': True
-            }
+            # 兼容不同接口的参数名: history 使用 start_time, 其余多使用 start_date
+            if fetch_func.__name__ == 'history':
+                kwargs = {
+                    'symbol': symbol,
+                    'start_time': start_date, # 这里传入的是字符串 'YYYY-MM-DD'，SDK 通常会自动转换，但 history 更稳妥是 YYYY-MM-DD HH:MM:SS
+                    'end_time': end_date,
+                    'frequency': '1d', # 默认日线
+                    'df': True
+                }
+            else:
+                kwargs = {
+                    'symbol': symbol,
+                    'start_date': start_date,
+                    'end_date': end_date,
+                    'df': True
+                }
+            
             if fields:
                 kwargs['fields'] = fields
                 
@@ -118,25 +129,28 @@ def download_category_data(base_pool, category_name, fetch_func, limiter, start_
         except Exception as e:
             logging.error(f"Failed to download {category_name} for {symbol}: {e}")
 
-def run_download_workflow(token, start_date, end_date):
+def run_download_workflow(token, start_date, end_date, index_code='SHSE.000852'):
     """执行完整的数据下载工作流"""
     set_token(token)
     limiter = RateLimiter(max_req=950)
     
-    # 1. 获取中证 1000 最新成分股
-    logging.info("Fetching CSI 1000 constituents...")
-    constituents = stk_get_index_constituents(index='SHSE.000852')
+    # 1. 获取最新成分股
+    logging.info(f"Fetching {index_code} constituents...")
+    constituents = stk_get_index_constituents(index=index_code)
     if constituents is None or constituents.empty:
-        logging.error("Failed to fetch constituents. Exiting.")
+        logging.error(f"Failed to fetch constituents for {index_code}. Exiting.")
         return
     
     symbols = constituents['symbol'].tolist()
     # 加入指数自身，用于下载基准行情
-    base_pool = symbols + ['SHSE.000852']
+    base_pool = symbols + [index_code]
     
     # 2. 下载历史行情 (history)
     # 这里的 history 接口在 gm 3.x 以后支持多支股票查询，但为了简单和断点续传，我们仍以 symbol 为单位保存
-    download_category_data(base_pool, "history_1d", history, limiter, start_date, end_date)
+    # 转换为 history 偏好的时间格式
+    h_start = f"{start_date} 09:00:00"
+    h_end = f"{end_date} 16:00:00"
+    download_category_data(base_pool, "history_1d", history, limiter, h_start, h_end)
     
     # 3. 下载日频估值 (valuation)
     # 指数本身通常没有估值和基本面数据，过滤掉
@@ -173,14 +187,16 @@ if __name__ == "__main__":
     
     parser = argparse.ArgumentParser(description="Download CSI 1000 Data from GM")
     parser.add_argument("--token", type=str, help="GM SDK Token")
+    parser.add_argument("--index", type=str, default="SHSE.000852", help="Index code (e.g., SHSE.000852 for CSI 1000)")
     parser.add_argument("--start", type=str, default=(datetime.now() - timedelta(days=365)).strftime("%Y-%m-%d"), help="Start date (YYYY-MM-DD)")
     parser.add_argument("--end", type=str, default=datetime.now().strftime("%Y-%m-%d"), help="End date (YYYY-MM-DD)")
     
     args = parser.parse_args()
     
-    # 优先从环境变量读取 TOKEN
-    token = args.token or os.getenv("GM_TOKEN")
+    # 硬编码 TOKEN
+    token = "478dc4635c5198dbfcc962ac3bb209e5327edbff"
+    
     if not token:
         print("Error: No token provided. Use --token or set GM_TOKEN environment variable.")
     else:
-        run_download_workflow(token, args.start, args.end)
+        run_download_workflow(token, args.start, args.end, args.index)

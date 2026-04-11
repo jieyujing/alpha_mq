@@ -17,12 +17,11 @@
     *   **基本面财报队列 (`stk_get_fundamentals_*`)**：针对 `balance` / `income` / `cashflow` 单独循环拉取。
 
 ## 3. 数据层与存储 (Storage Architecture)
-由于不同金融数据维度的更新频率不同，我们采用“模块化分类存储”设计以消除冗余。
-数据落地至目录：`data/exports/`
-*   `csi1000_history_1d.csv` (OHLCV等日均量价)
-*   `csi1000_valuation_daily.csv` (日更新的主题因子和市值)
-*   `csi1000_fundamentals_quarterly.csv` (按季度更新的纯基本面)
-*   `index_shse000852_history.csv` (指数专有行情对照组)
+由于不同金融数据维度的更新频率不同，且为了避免单表文件过于庞大，我们采用“维度划分 + 个股独立成表 (One File Per Symbol)”的树状存储结构。
+数据最终落地至 `data/exports/` 对应的子目录中：
+*   `data/exports/history_1d/{symbol}.csv` (存放个股每日行情，以及指数本身的行情)
+*   `data/exports/valuation/{symbol}.csv` (存放个股日频估值衍生与市值因子)
+*   `data/exports/fundamentals/{symbol}.csv` (存放个股的季度基本面表合并数据)
 
 ## 4. 容错防御与清洗 (Error Handling)
 *   **时区剥离**: 数据取出后强制 `tz_localize(None)` 以避免 Parquet/CSV 长时间戳时区污染。

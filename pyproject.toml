@@ -1,44 +1,13 @@
 [project]
 name = "alpha-mq"
 version = "0.1.0"
-description = "中证1000多因子选股系统"
+description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.10,<3.13"
+requires-python = ">=3.12"
 dependencies = [
-    "pyqlib",
-    "lightgbm",
-    "polars",
-    "pandas>=2.0.0,<2.2.0",
-    "numpy<2.0.0",
-    "scipy",
-    "scikit-learn",
-    "joblib",
-    "protobuf<=3.20.3",
-    "pyarrow>=23.0.1",
+    "gm>=3.0.183",
+    "pandas>=3.0.2",
+    "pytest>=9.0.3",
+    "tenacity>=9.1.4",
     "tqdm>=4.67.3",
-    "gm>=3.0.0; sys_platform != 'darwin'",
-    "fire>=0.7.1",
-    "loguru>=0.7.3",
-    "plotly>=6.6.0",
-    "statsmodels>=0.14.6",
-    "numba>=0.58.0",
-]
-
-[project.optional-dependencies]
-dev = [
-    "pytest",
-    "pytest-cov",
-]
-
-
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
-
-[tool.hatch.build.targets.wheel]
-packages = ["data", "factor", "model", "backtest"]
-
-[dependency-groups]
-dev = [
-    "pytest-mock>=3.15.1",
 ]
