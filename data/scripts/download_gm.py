@@ -82,7 +82,7 @@ def fetch_safe(func, *args, **kwargs):
 
 def download_category_data(base_pool, category_name, fetch_func, limiter, start_date, end_date, fields=None):
     """
-    通用分类数据下载逻辑
+    通用分类数据下载逻辑 (支持对超过20个字段的基本面数据进行分段抓取和合并)
     """
     category_dir = os.path.join("data", "exports", category_name)
     os.makedirs(category_dir, exist_ok=True)
@@ -96,36 +96,48 @@ def download_category_data(base_pool, category_name, fetch_func, limiter, start_
 
     logging.info(f"Downloading {category_name} for {len(to_download)} symbols...")
     
+    # 字段分片逻辑 (每片最多15个字段，留余量给系统字段)
+    field_list = fields.split(",") if fields else []
+    is_fundamental = category_name.startswith("fundamentals_")
+    
+    if is_fundamental and len(field_list) > 15:
+        field_chunks = [field_list[i:i + 15] for i in range(0, len(field_list), 15)]
+    else:
+        field_chunks = [field_list] if field_list else [None]
+
     for symbol in tqdm(to_download, desc=f"Downloading {category_name}"):
-        limiter.wait()
         try:
-            # 兼容不同接口的参数名: history 使用 start_time, 其余多使用 start_date
-            if fetch_func.__name__ == 'history':
-                kwargs = {
-                    'symbol': symbol,
-                    'start_time': start_date, # 这里传入的是字符串 'YYYY-MM-DD'，SDK 通常会自动转换，但 history 更稳妥是 YYYY-MM-DD HH:MM:SS
-                    'end_time': end_date,
-                    'frequency': '1d', # 默认日线
-                    'df': True
-                }
-            else:
-                kwargs = {
-                    'symbol': symbol,
-                    'start_date': start_date,
-                    'end_date': end_date,
-                    'df': True
-                }
+            limiter.wait()
+            combined_df = None
             
-            if fields:
-                kwargs['fields'] = fields
+            for chunk in field_chunks:
+                kwargs = {'symbol': symbol, 'df': True}
                 
-            df = fetch_safe(fetch_func, **kwargs)
+                # 兼容不同接口的参数名
+                if fetch_func.__name__ == 'history':
+                    kwargs.update({'start_time': start_date, 'end_time': end_date, 'frequency': '1d'})
+                else:
+                    kwargs.update({'start_date': start_date, 'end_date': end_date})
+                
+                if chunk:
+                    kwargs['fields'] = ",".join(chunk)
+                
+                df = fetch_safe(fetch_func, **kwargs)
+                
+                if df is not None and not df.empty:
+                    if combined_df is None:
+                        combined_df = df
+                    elif is_fundamental:
+                        # 基于标的 + 发布日期 + 报表截止日期进行合并
+                        merge_keys = ['symbol', 'pub_date', 'rpt_date']
+                        # 仅保留新列和合并键
+                        new_cols = [c for c in df.columns if c not in combined_df.columns or c in merge_keys]
+                        combined_df = pd.merge(combined_df, df[new_cols], on=merge_keys, how='outer')
             
-            if df is not None and not df.empty:
+            if combined_df is not None and not combined_df.empty:
                 save_path = os.path.join(category_dir, f"{symbol}.csv")
-                df.to_csv(save_path, index=False)
-            else:
-                logging.debug(f"No data for {symbol} in {category_name}")
+                combined_df.to_csv(save_path, index=False)
+                
         except Exception as e:
             logging.error(f"Failed to download {category_name} for {symbol}: {e}")
 
@@ -167,13 +179,83 @@ def run_download_workflow(token, start_date, end_date, index_code='SHSE.000852')
     basic_fields = "tclose,turnrate,ttl_shr,circ_shr"
     download_category_data(stock_pool, "basic", stk_get_daily_basic, limiter, start_date, end_date, fields=basic_fields)
 
-    # 6. 下载基本面 (财务报表)
-    # 财务报表通常按季度，这里我们根据日期范围拉取
-    logging.info("Downloading Fundamental reports...")
+    # 6. 全量财务报表 (分段抓取)
+    logging.info("Downloading Full Fundamental reports (Chunked)...")
+    
+    balance_fields = (
+        "cash_bal_cb,dpst_ob,mny_cptl,cust_cred_dpst,cust_dpst,pm,bal_clr,cust_rsv,ln_to_ob,"
+        "fair_val_fin_ast,ppay,fin_out,trd_fin_ast,deriv_fin_ast,note_acct_rcv,note_rcv,acct_rcv,"
+        "acct_rcv_fin,int_rcv,dvd_rcv,oth_rcv,in_prem_rcv,rin_acct_rcv,rin_rsv_rcv,rcv_un_prem_rin_rsv,"
+        "rcv_clm_rin_rsv,rcv_li_rin_rsv,rcv_lt_hi_rin_rsv,ph_plge_ln,ttl_oth_rcv,rfd_dpst,term_dpst,"
+        "pur_resell_fin,aval_sale_fin,htm_inv,hold_for_sale,acct_rcv_inv,invt,contr_ast,ncur_ast_one_y,"
+        "oth_cur_ast,cur_ast_oth_item,ttl_cur_ast,loan_adv,cred_inv,oth_cred_inv,lt_rcv,lt_eqy_inv,"
+        "oth_eqy_inv,rfd_cap_guar_dpst,oth_ncur_fin_ast,amor_cos_fin_ast_ncur,fair_val_oth_inc_ncur,"
+        "inv_prop,fix_ast,const_prog,const_matl,fix_ast_dlpl,cptl_bio_ast,oil_gas_ast,rig_ast,"
+        "intg_ast,trd_seat_fee,dev_exp,gw,lt_ppay_exp,dfr_tax_ast,oth_ncur_ast,ncur_ast_oth_item,"
+        "ttl_ncur_ast,oth_ast,ast_oth_item,ind_acct_ast,ttl_ast,brw_cb,dpst_ob_fin_inst,ln_fm_ob,"
+        "fair_val_fin_liab,sht_ln,adv_acct,contr_liab,trd_fin_liab,deriv_fin_liab,sell_repo_ast,"
+        "cust_bnk_dpst,dpst_cb_note_pay,dpst_cb,acct_rcv_adv,in_prem_rcv_adv,fee_pay,note_acct_pay,"
+        "stlf_pay,note_pay,acct_pay,rin_acct_pay,emp_comp_pay,tax_pay,int_pay,dvd_pay,ph_dvd_pay,"
+        "indem_pay,oth_pay,ttl_oth_pay,ph_dpst_inv,in_contr_rsv,un_prem_rsv,clm_rin_rsv,li_liab_rsv,"
+        "lt_hi_liab_rsv,cust_bnk_dpst_fin,inter_pay,agy_secu_trd,agy_secu_uw,sht_bnd_pay,est_cur_liab,"
+        "liab_hold_for_sale,ncur_liab_one_y,oth_cur_liab,cur_liab_oth_item,ttl_cur_liab,lt_ln,lt_pay,"
+        "leas_liab,dfr_inc,dfr_tax_liab,bnd_pay,bnd_pay_pbd,bnd_pay_pfd,oth_ncur_liab,spcl_pay,"
+        "ncur_liab_oth_item,lt_emp_comp_pay,est_liab,oth_liab,liab_oth_item,ttl_ncur_liab,ind_acct_liab,"
+        "ttl_liab,paid_in_cptl,oth_eqy,oth_eqy_pfd,oth_eqy_pbd,oth_eqy_oth,cptl_rsv,treas_shr,"
+        "oth_comp_inc,spcl_rsv,sur_rsv,rsv_ord_rsk,trd_risk_rsv,ret_prof,sugg_dvd,eqy_pcom_oth_item,"
+        "ttl_eqy_pcom,min_sheqy,sheqy_oth_item,ttl_eqy,ttl_liab_eqy"
+    )
+    
+    income_fields = (
+        "ttl_inc_oper,inc_oper,net_inc_int,exp_int,net_inc_fee_comm,inc_rin_prem,net_inc_secu_agy,"
+        "inc_fee_comm,in_prem_earn,inc_in_biz,rin_prem_cede,unear_prem_rsv,net_inc_uw,net_inc_cust_ast_mgmt,"
+        "inc_fx,inc_other_oper,inc_oper_balance,ttl_inc_oper_other,ttl_cost_oper,cost_oper,exp_oper,"
+        "biz_tax_sur,exp_sell,exp_adm,exp_rd,exp_fin,int_fee,inc_int,exp_oper_adm,exp_rin,rfd_prem,"
+        "comp_pay,rin_clm_pay,draw_insur_liab,amor_insur_liab,exp_ph_dvd,exp_fee_comm,other_oper_cost,"
+        "oper_exp_balance,exp_oper_other,ttl_cost_oper_other,inc_inv,inv_inv_jv_p,inc_ast_dspl,"
+        "ast_impr_loss,cred_impr_loss,inc_fv_chg,inc_other,oper_prof_balance,oper_prof,inc_noper,"
+        "exp_noper,ttl_prof_balance,oper_prof_other,ttl_prof,inc_tax,net_prof,oper_net_prof,"
+        "net_prof_pcom,min_int_inc,end_net_prof,net_prof_other,eps_base,eps_dil,other_comp_inc,"
+        "other_comp_inc_pcom,other_comp_inc_min,ttl_comp_inc,ttl_comp_inc_pcom,ttl_comp_inc_min,"
+        "prof_pre_merge,net_rsv_in_contr,net_pay_comp,net_loss_ncur_ast,amod_fin_asst_end,"
+        "cash_flow_hedging_pl,cur_trans_diff,gain_ncur_ast,afs_fv_chg_pl,oth_eqy_inv_fv_chg,"
+        "oth_debt_inv_fv_chg,oth_debt_inv_cred_impr"
+    )
+    
+    cashflow_fields = (
+        "cash_rcv_sale,net_incr_cust_dpst_ob,net_incr_cust_dpst,net_incr_dpst_ob,net_incr_brw_cb,"
+        "net_incr_ln_fm_oth,cash_rcv_orig_in,net_cash_rcv_rin_biz,net_incr_ph_dpst_inv,net_decrdpst_cb_ob,"
+        "net_decr_cb,net_decr_ob_fin_inst,net_cert_dpst,net_decr_trd_fin,net_incr_trd_liab,cash_rcv_int_fee,"
+        "cash_rcv_int,cash_rcv_fee,net_incr_lnfm_sell_repo,net_incr_ln_fm,net_incr_sell_repo,"
+        "net_decr_lnto_pur_resell,net_decr_ln_cptl,net_dect_pur_resell,net_incr_repo,net_decr_repo,"
+        "tax_rbt_rcv,net_cash_rcv_trd,cash_rcv_oth_oper,net_cash_agy_secu_trd,cash_rcv_pur_resell,"
+        "net_cash_agy_secu_uw,cash_rcv_dspl_debt,canc_loan_rcv,cf_in_oper,cash_pur_gds_svc,net_incr_ln_adv_cust,"
+        "net_decr_brw_cb,net_incr_dpst_cb_ob,net_incr_cb,net_incr_ob_fin_inst,net_decr_dpst_ob,"
+        "net_decr_issu_cert_dpst,net_incr_lnto_pur_resell,net_incr_ln_to,net_incr_pur_resell,"
+        "net_decr_lnfm_sell_repo,net_decr_ln_fm,net_decr_sell_repo,net_incr_trd_fin,net_decr_trd_liab,"
+        "cash_pay_indem_orig,net_cash_pay_rin_biz,cash_pay_int_fee,cash_pay_int,cash_pay_fee,ph_dvd_pay,"
+        "net_decr_ph_dpst_inv,cash_pay_emp,cash_pay_tax,net_cash_pay_trd,cash_pay_oth_oper,"
+        "net_incr_dspl_trd_fin,cash_pay_fin_leas,net_decr_agy_secu_pay,net_decr_dspl_trd_fin,cf_out_oper,"
+        "net_cf_oper,cash_rcv_sale_inv,inv_inc_rcv,cash_rcv_dvd_prof,cash_rcv_dspl_ast,cash_rcv_dspl_sub_oth,"
+        "cash_rcv_oth_inv,cf_in_inv,pur_fix_intg_ast,cash_out_dspl_sub_oth,cash_pay_inv,net_incr_ph_plge_ln,"
+        "add_cash_pled_dpst,net_incr_plge_ln,net_cash_get_sub,net_pay_pur_resell,cash_pay_oth_inv,"
+        "cf_out_inv,net_cf_inv,cash_rcv_cptl,sub_rcv_ms_inv,brw_rcv,cash_rcv_bnd_iss,net_cash_rcv_sell_repo,"
+        "cash_rcv_oth_fin,issu_cert_dpst,cf_in_fin_oth,cf_in_fin,cash_rpay_brw,cash_pay_bnd_int,"
+        "cash_pay_dvd_int,sub_pay_dvd_prof,cash_pay_oth_fin,net_cash_pay_sell_repo,cf_out_fin,net_cf_fin,"
+        "efct_er_chg_cash,net_incr_cash_eq,cash_cash_eq_bgn,cash_cash_eq_end,net_prof,ast_impr,"
+        "accr_prvs_ln_impa,accr_prvs_oth_impa,accr_prem_rsv,accr_unearn_prem_rsv,defr_fix_prop,"
+        "depr_oga_cba,amor_intg_ast_lt_exp,amort_intg_ast,amort_lt_exp_ppay,dspl_ast_loss,"
+        "fair_val_chg_loss,fv_chg_loss,dfa,fin_exp,inv_loss,exchg_loss,dest_incr,loan_decr,"
+        "cash_pay_bnd_int_iss,dfr_tax,dfr_tax_ast_decr,dfr_tax_liab_incr,invt_decr,decr_rcv_oper,"
+        "incr_pay_oper,oth,cash_end,cash_bgn,cash_eq_end,cash_eq_bgn,cred_impr_loss,est_liab_add,"
+        "dr_cnv_cptl,cptl_bnd_expr_one_y,fin_ls_fix_ast,amort_dfr_inc,depr_inv_prop,trd_fin_decr,"
+        "im_net_cf_oper,im_net_incr_cash_eq"
+    )
+
     fundamental_tasks = [
-        ("balance", stk_get_fundamentals_balance, "ttl_ast,ttl_liab,ttl_eqy,ttl_eqy_pcom,paid_in_cptl,ret_prof"),
-        ("income", stk_get_fundamentals_income, "inc_oper,cost_oper,net_prof,net_prof_pcom,oper_prof,ttl_prof"),
-        ("cashflow", stk_get_fundamentals_cashflow, "net_cf_oper,net_cf_inv,net_cf_fin,net_incr_cash_eq")
+        ("balance", stk_get_fundamentals_balance, balance_fields),
+        ("income", stk_get_fundamentals_income, income_fields),
+        ("cashflow", stk_get_fundamentals_cashflow, cashflow_fields)
     ]
     
     for name, func, f_fields in fundamental_tasks:
