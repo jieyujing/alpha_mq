@@ -27,11 +27,12 @@ wheels = [
 [[package]]
 name = "alpha-mq"
 version = "0.1.0"
-source = { virtual = "." }
+source = { editable = "." }
 dependencies = [
     { name = "alphalens" },
     { name = "alphalens-reloaded" },
     { name = "gm", marker = "sys_platform != 'darwin'" },
+    { name = "lightgbm" },
     { name = "matplotlib" },
     { name = "openpyxl" },
     { name = "pandas" },
@@ -50,6 +51,7 @@ requires-dist = [
     { name = "alphalens", git = "https://gitee.com/yunjinqi/alphalens.git" },
     { name = "alphalens-reloaded", specifier = ">=0.4.3" },
     { name = "gm", marker = "sys_platform != 'darwin'", specifier = ">=3.0.183" },
+    { name = "lightgbm", specifier = ">=4.6.0" },
     { name = "matplotlib", specifier = ">=3.10.8" },
     { name = "openpyxl", specifier = ">=3.1.5" },
     { name = "pandas", specifier = ">=3.0.2" },
