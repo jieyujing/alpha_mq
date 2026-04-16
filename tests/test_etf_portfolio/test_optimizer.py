@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+import pytest
 from src.etf_portfolio.optimizer import get_optimal_weights
 
 def test_get_optimal_weights_ew():
