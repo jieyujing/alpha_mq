@@ -69,6 +69,9 @@ def assemble_portfolio(scores: pd.Series, top_n=4, single_cap=0.35, energy_cap=0
 
 def build_features(prices: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """Build multi-index features and labels for the ETF pool."""
+    # Ensure all inputs are float to avoid object dtype issues in LGBM
+    prices = prices.astype(float)
+    
     close = prices.xs('close', level='field', axis=1)
     high = prices.xs('high', level='field', axis=1)
     low = prices.xs('low', level='field', axis=1)
@@ -122,8 +125,8 @@ def build_features(prices: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
         label = fwd_ret / (fwd_vol * np.sqrt(20) + 1e-9)
         all_labels.append(label.rename(symbol))
 
-    X = pd.concat(all_features, axis=1)
-    y = pd.concat(all_labels, axis=1)
+    X = pd.concat(all_features, axis=1).astype(float)
+    y = pd.concat(all_labels, axis=1).astype(float)
     
     return X, y
 
