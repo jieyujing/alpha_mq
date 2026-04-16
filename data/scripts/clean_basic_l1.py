@@ -56,6 +56,10 @@ def process_l1():
     df_l1 = (
         df_history.join(df_adj, on=["symbol", "date"], how="left", validate="m:1")
         .join(df_basic, on=["symbol", "date"], how="left", validate="m:1")
+        .sort(["symbol", "date"])
+        .with_columns(
+            pl.col("adj_factor").forward_fill().over("symbol")
+        )
     )
     
     # Calculate adjusted prices

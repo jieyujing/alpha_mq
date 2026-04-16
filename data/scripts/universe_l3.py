@@ -1,6 +1,7 @@
 import os
 import polars as pl
 import logging
+import glob
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
 
@@ -14,6 +15,32 @@ def process_l3():
 
     logging.info("Loading L2 data...")
     df = pl.read_parquet(l2_path)
+    
+    # --- Join Market Value & Industry ---
+    export_dir = "data/exports"
+    
+    logging.info("Loading market value data...")
+    mktvalue_pattern = os.path.join(export_dir, "mktvalue", "*.csv")
+    def _read_mkt():
+        dfs = []
+        for f in glob.glob(mktvalue_pattern):
+            symbol = os.path.basename(f).replace(".csv", "")
+            dfs.append(pl.read_csv(f).with_columns(pl.lit(symbol).alias("symbol")))
+        return pl.concat(dfs, how="diagonal_relaxed").with_columns(
+            pl.col("trade_date").str.to_datetime("%Y-%m-%d").alias("date")
+        ).select(["symbol", "date", "a_mv", "tot_mv"])
+    
+    df_mkt = _read_mkt()
+    
+    logging.info("Loading industry data...")
+    df_ind = pl.read_csv(os.path.join(export_dir, "static", "industry.csv")).select([
+        "symbol", "industry_code", "industry_name"
+    ])
+    
+    logging.info("Merging additional features to universe...")
+    df = df.join(df_mkt, on=["symbol", "date"], how="left")
+    df = df.join(df_ind, on="symbol", how="left")
+    # ------------------------------------
     
     # 1. Rolling Liquidity (e.g., 20-day average amount)
     logging.info("Computing rolling liquidity...")

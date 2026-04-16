@@ -11,6 +11,7 @@ from tenacity import retry, wait_exponential, stop_after_attempt
 from gm.api import set_token, stk_get_index_constituents, history
 from gm.api import stk_get_daily_valuation, stk_get_daily_basic, stk_get_daily_mktvalue
 from gm.api import stk_get_fundamentals_balance, stk_get_fundamentals_income, stk_get_fundamentals_cashflow
+from gm.api import stk_get_adj_factor, get_instruments, get_trading_dates, stk_get_symbol_industry
 
 # 设置日志
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -61,12 +62,16 @@ def get_downloaded_symbols(category_dir: str) -> set:
 
 def clean_df_tz(df):
     """移除 DataFrame 中的时区信息，以便保存"""
-    if df is None or df.empty:
+    if df is None:
+        return df
+    if isinstance(df, list) or isinstance(df, tuple):
+        df = pd.DataFrame(df)
+    if df.empty:
         return df
     # 查找所有带时区的 datetime 列
     for col in df.columns:
         if pd.api.types.is_datetime64_any_dtype(df[col]):
-            if df[col].dt.tz is not None:
+            if getattr(df[col].dt, 'tz', None) is not None:
                 df[col] = df[col].dt.tz_localize(None)
     return df
 
@@ -77,6 +82,10 @@ def fetch_safe(func, *args, **kwargs):
         df = func(*args, **kwargs)
         return clean_df_tz(df)
     except Exception as e:
+        if isinstance(e, UnboundLocalError) and 'pd' in str(e):
+            # 兼容 GM SDK 内部在空数据时未导入 pandas 的 bug
+            logging.warning(f"Ignoring GM SDK empty data bug (UnboundLocalError 'pd') in {func.__name__}")
+            return None
         logging.error(f"Error calling {func.__name__}: {e}")
         raise
 
@@ -121,6 +130,10 @@ def download_category_data(base_pool, category_name, fetch_func, limiter, start_
                 
                 if chunk:
                     kwargs['fields'] = ",".join(chunk)
+                
+                # 兼容不接受 df 参数的特殊接口
+                if fetch_func.__name__ == 'stk_get_adj_factor':
+                    kwargs.pop('df', None)
                 
                 df = fetch_safe(fetch_func, **kwargs)
                 
@@ -176,7 +189,7 @@ def run_download_workflow(token, start_date, end_date, index_code='SHSE.000852')
     download_category_data(stock_pool, "mktvalue", stk_get_daily_mktvalue, limiter, start_date, end_date, fields=mktvalue_fields)
 
     # 5. 下载基础指标 (basic)
-    basic_fields = "tclose,turnrate,ttl_shr,circ_shr"
+    basic_fields = "tclose,turnrate,ttl_shr,circ_shr,is_st,is_suspended,upper_limit,lower_limit"
     download_category_data(stock_pool, "basic", stk_get_daily_basic, limiter, start_date, end_date, fields=basic_fields)
 
     # 6. 全量财务报表 (分段抓取)
@@ -260,6 +273,65 @@ def run_download_workflow(token, start_date, end_date, index_code='SHSE.000852')
     
     for name, func, f_fields in fundamental_tasks:
         download_category_data(stock_pool, f"fundamentals_{name}", func, limiter, start_date, end_date, fields=f_fields)
+
+    # 7. 下载复权因子 (Adj Factor)
+    logging.info("Downloading Adj Factor...")
+    download_category_data(stock_pool, "adj_factor", stk_get_adj_factor, limiter, start_date, end_date)
+
+    # 8. 下载静态数据 (行业分类, 上配信息)
+    logging.info("Downloading Static Data (Industry, Instruments)...")
+    static_dir = os.path.join("data", "exports", "static")
+    os.makedirs(static_dir, exist_ok=True)
+
+    def chunked_string(lst, n):
+        return [",".join(lst[i:i + n]) for i in range(0, len(lst), n)]
+
+    # 行业分类
+    industry_dfs = []
+    for chunk in chunked_string(stock_pool, 100):
+        try:
+            limiter.wait()
+            # api 返回包含 symbol, industry1 等字段
+            # 部分版本要求 df=True，有的不支持 df=True，这里建议不写 df，如果返回list of dict则自己转df
+            res = stk_get_symbol_industry(symbols=chunk)
+            if res is not None:
+                if isinstance(res, list):
+                    res = pd.DataFrame(res)
+                if not res.empty:
+                    industry_dfs.append(res)
+        except Exception as e:
+            logging.error(f"Failed to fetch industry for chunk: {e}")
+    
+    if industry_dfs:
+        pd.concat(industry_dfs).drop_duplicates('symbol').to_csv(os.path.join(static_dir, "industry.csv"), index=False)
+
+    # 股票列表 (上市/退市日期等)
+    inst_dfs = []
+    for chunk in chunked_string(stock_pool, 100):
+        try:
+            limiter.wait()
+            res = get_instruments(symbols=chunk, df=True)
+            if res is not None and not res.empty:
+                cols = [c for c in ['symbol', 'list_date', 'delist_date'] if c in res.columns]
+                inst_dfs.append(res[cols])
+        except Exception as e:
+            logging.error(f"Failed to fetch instruments for chunk: {e}")
+            
+    if inst_dfs:
+        pd.concat(inst_dfs).drop_duplicates('symbol').to_csv(os.path.join(static_dir, "instruments.csv"), index=False)
+
+    # 9. 下载交易日历 (Trading Dates)
+    logging.info("Downloading Trading Dates...")
+    calendar_dir = os.path.join("data", "exports", "calendar")
+    os.makedirs(calendar_dir, exist_ok=True)
+    try:
+        limiter.wait()
+        # get_trading_dates typically returns a list of string dates
+        dates = get_trading_dates(exchange='SHSE', start_date=start_date, end_date=end_date)
+        if dates:
+            pd.DataFrame({'trade_date': dates}).to_csv(os.path.join(calendar_dir, "trade_dates.csv"), index=False)
+    except Exception as e:
+        logging.error(f"Failed to fetch trading dates: {e}")
 
     logging.info("Download workflow completed.")
 
