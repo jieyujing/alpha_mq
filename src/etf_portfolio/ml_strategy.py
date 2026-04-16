@@ -69,9 +69,6 @@ def assemble_portfolio(scores: pd.Series, top_n=4, single_cap=0.35, energy_cap=0
 
 def build_features(prices: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """Build multi-index features and labels for the ETF pool."""
-    # Ensure all inputs are float to avoid object dtype issues in LGBM
-    prices = prices.astype(float)
-    
     close = prices.xs('close', level='field', axis=1)
     high = prices.xs('high', level='field', axis=1)
     low = prices.xs('low', level='field', axis=1)
@@ -132,6 +129,8 @@ def build_features(prices: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
 
 def run_ml_rolling_backtest(prices: pd.DataFrame, train_window=750, test_gap=20) -> pd.Series:
     """Run the rolling ML backtest pipeline."""
+    # Ensure all inputs are float to avoid object dtype issues in pipeline
+    prices = prices.astype(float)
     X, y = build_features(prices)
     close = prices.xs('close', level='field', axis=1)
     
@@ -237,6 +236,8 @@ def main():
     # 4. Generating Reports
     if not ml_returns.empty:
         print("\n[3/3] Generating performance reports...")
+        # Ensure float dtype for QuantStats
+        ml_returns = ml_returns.astype(float)
         all_results = {'LightGBM_MVP': ml_returns}
         generate_reports(all_results, output_dir='reports_ml')
         print("\nPipeline execution complete. Reports saved in 'reports_ml/' directory.")
