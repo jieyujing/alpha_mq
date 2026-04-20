@@ -12,6 +12,7 @@ from gm.api import set_token, stk_get_index_constituents, history
 from gm.api import stk_get_daily_valuation, stk_get_daily_basic, stk_get_daily_mktvalue
 from gm.api import stk_get_fundamentals_balance, stk_get_fundamentals_income, stk_get_fundamentals_cashflow
 from gm.api import stk_get_adj_factor, get_instruments, get_trading_dates, stk_get_symbol_industry
+from datetime import datetime, timedelta
 
 # 设置日志
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -49,16 +50,60 @@ class RateLimiter:
             
         self.history.append(time.time())
 
-def get_downloaded_symbols(category_dir: str) -> set:
+def get_downloaded_symbols(category_dir: str, file_format='csv') -> set:
     """
-    检查指定目录下已经下载成功的 CSV 文件，返回 symbol 集合
+    检查指定目录下已经下载成功的标的，返回 symbol 集合
     """
     if not os.path.isdir(category_dir):
         return set()
-    csv_files = glob.glob(os.path.join(category_dir, "*.csv"))
-    # 从文件名提取 symbol (剔除 .csv 后缀)
-    symbols = {os.path.basename(f).replace('.csv', '') for f in csv_files}
+    csv_files = glob.glob(os.path.join(category_dir, f"*.{file_format}"))
+    # 从文件名提取 symbol (剔除后缀)
+    symbols = {os.path.basename(f).replace(f'.{file_format}', '') for f in csv_files}
     return symbols
+
+def get_time_chunks(start_date, end_date):
+    """
+    将时间区间切分为月度分片，应对 GMT 33000 条限制
+    """
+    start = datetime.strptime(start_date.split(' ')[0], '%Y-%m-%d')
+    end = datetime.strptime(end_date.split(' ')[0], '%Y-%m-%d')
+    
+    chunks = []
+    curr_start = start
+    while curr_start <= end:
+        # 计算当前月最后一天
+        if curr_start.month == 12:
+            next_month = curr_start.replace(year=curr_start.year + 1, month=1, day=1)
+        else:
+            next_month = curr_start.replace(month=curr_start.month + 1, day=1)
+        
+        curr_end = next_month - timedelta(seconds=1)
+        if curr_end > end:
+            curr_end = end
+            
+        chunks.append((curr_start.strftime('%Y-%m-%d %H:%M:%S'), curr_end.strftime('%Y-%m-%d %H:%M:%S')))
+        curr_start = next_month
+        
+    return chunks
+
+def get_last_timestamp(file_path, file_format='parquet'):
+    """
+    获取已有文件中最后一行的 bob (timestamp)
+    """
+    try:
+        if file_format == 'parquet':
+            # 只读取最后一列/最后一行以提高性能
+            df = pd.read_parquet(file_path, columns=['bob'])
+            if not df.empty:
+                return df['bob'].max()
+        elif file_format == 'csv':
+            # CSV 只能读取最后几行
+            df = pd.read_csv(file_path, usecols=['bob'])
+            if not df.empty:
+                return pd.to_datetime(df['bob']).max()
+    except Exception:
+        pass
+    return None
 
 def clean_df_tz(df):
     """移除 DataFrame 中的时区信息，以便保存"""
@@ -89,15 +134,20 @@ def fetch_safe(func, *args, **kwargs):
         logging.error(f"Error calling {func.__name__}: {e}")
         raise
 
-def download_category_data(base_pool, category_name, fetch_func, limiter, start_date, end_date, fields=None):
+def download_category_data(base_pool, category_name, fetch_func, limiter, start_date, end_date, fields=None, frequency='1d', file_format='csv'):
     """
     通用分类数据下载逻辑 (支持对超过20个字段的基本面数据进行分段抓取和合并)
     """
     category_dir = os.path.join("data", "exports", category_name)
     os.makedirs(category_dir, exist_ok=True)
     
-    downloaded = get_downloaded_symbols(category_dir)
-    to_download = [s for s in base_pool if s not in downloaded]
+    downloaded = get_downloaded_symbols(category_dir, file_format=file_format)
+    # 对于 history 数据，我们采用增量模式，不直接跳过已存在的 symbol，除非它已经更新到最新
+    is_history = fetch_func.__name__ == 'history'
+    if is_history:
+        to_download = base_pool # 增量模式检查文件内部
+    else:
+        to_download = [s for s in base_pool if s not in downloaded]
     
     if not to_download:
         logging.info(f"All symbols in {category_name} already downloaded.")
@@ -116,45 +166,83 @@ def download_category_data(base_pool, category_name, fetch_func, limiter, start_
 
     for symbol in tqdm(to_download, desc=f"Downloading {category_name}"):
         try:
-            limiter.wait()
-            combined_df = None
+            save_path = os.path.join(category_dir, f"{symbol}.{file_format}")
             
-            for chunk in field_chunks:
-                kwargs = {'symbol': symbol, 'df': True}
+            # 1. 增量断点检查
+            last_dt = None
+            if os.path.exists(save_path):
+                last_dt = get_last_timestamp(save_path, file_format=file_format)
+                if last_dt:
+                    # 如果已有数据最新时间已超过请求的结束时间，跳过
+                    req_end_dt = pd.to_datetime(end_date)
+                    if last_dt >= req_end_dt:
+                        continue
+            
+            # 2. 确定时间分片
+            if is_history:
+                # 只有 history 需要处理 33000 条限制，按月切片
+                # 调整起始时间为断点之后
+                actual_start = start_date
+                if last_dt:
+                    # 断点后推 1 秒/分钟/天（取决于频度，这里简单处理为后推 1 秒）
+                    actual_start = (last_dt + timedelta(seconds=1)).strftime('%Y-%m-%d %H:%M:%S')
                 
-                # 兼容不同接口的参数名
-                if fetch_func.__name__ == 'history':
-                    kwargs.update({'start_time': start_date, 'end_time': end_date, 'frequency': '1d'})
+                time_chunks = get_time_chunks(actual_start, end_date)
+            else:
+                time_chunks = [(start_date, end_date)]
+
+            combined_df = None
+            # 如果是增量模式，且文件存在，先加载旧数据以便合并（或者后面用 append）
+            # 对于 Parquet，我们先读出来再写回去，或者使用 fastparquet 的 append 功能
+            if os.path.exists(save_path):
+                if file_format == 'parquet':
+                    combined_df = pd.read_parquet(save_path)
                 else:
-                    kwargs.update({'start_date': start_date, 'end_date': end_date})
+                    combined_df = pd.read_csv(save_path)
+
+            for t_start, t_end in time_chunks:
+                limiter.wait()
+                chunk_combined_df = None
                 
-                if chunk:
-                    kwargs['fields'] = ",".join(chunk)
+                for f_chunk in field_chunks:
+                    kwargs = {'symbol': symbol, 'df': True}
+                    if is_history:
+                        kwargs.update({'start_time': t_start, 'end_time': t_end, 'frequency': frequency})
+                    else:
+                        kwargs.update({'start_date': t_start, 'end_date': t_end})
+                    
+                    if f_chunk:
+                        kwargs['fields'] = ",".join(f_chunk)
+                    
+                    if fetch_func.__name__ == 'stk_get_adj_factor':
+                        kwargs.pop('df', None)
+                    
+                    df = fetch_safe(fetch_func, **kwargs)
+                    
+                    if df is not None and not df.empty:
+                        if chunk_combined_df is None:
+                            chunk_combined_df = df
+                        elif is_fundamental:
+                            merge_keys = ['symbol', 'pub_date', 'rpt_date']
+                            new_cols = [c for c in df.columns if c not in chunk_combined_df.columns or c in merge_keys]
+                            chunk_combined_df = pd.merge(chunk_combined_df, df[new_cols], on=merge_keys, how='outer')
                 
-                # 兼容不接受 df 参数的特殊接口
-                if fetch_func.__name__ == 'stk_get_adj_factor':
-                    kwargs.pop('df', None)
-                
-                df = fetch_safe(fetch_func, **kwargs)
-                
-                if df is not None and not df.empty:
+                if chunk_combined_df is not None and not chunk_combined_df.empty:
                     if combined_df is None:
-                        combined_df = df
-                    elif is_fundamental:
-                        # 基于标的 + 发布日期 + 报表截止日期进行合并
-                        merge_keys = ['symbol', 'pub_date', 'rpt_date']
-                        # 仅保留新列和合并键
-                        new_cols = [c for c in df.columns if c not in combined_df.columns or c in merge_keys]
-                        combined_df = pd.merge(combined_df, df[new_cols], on=merge_keys, how='outer')
+                        combined_df = chunk_combined_df
+                    else:
+                        combined_df = pd.concat([combined_df, chunk_combined_df]).drop_duplicates(subset=['symbol', 'bob'] if is_history else None)
             
             if combined_df is not None and not combined_df.empty:
-                save_path = os.path.join(category_dir, f"{symbol}.csv")
-                combined_df.to_csv(save_path, index=False)
+                if file_format == 'parquet':
+                    combined_df.to_parquet(save_path, index=False)
+                else:
+                    combined_df.to_csv(save_path, index=False)
                 
         except Exception as e:
             logging.error(f"Failed to download {category_name} for {symbol}: {e}")
 
-def run_download_workflow(token, start_date, end_date, index_code='SHSE.000852'):
+def run_download_workflow(token, start_date, end_date, index_code='SHSE.000852', history_1m=False, full_history=False):
     """执行完整的数据下载工作流"""
     set_token(token)
     limiter = RateLimiter(max_req=950)
@@ -170,12 +258,24 @@ def run_download_workflow(token, start_date, end_date, index_code='SHSE.000852')
     # 加入指数自身，用于下载基准行情
     base_pool = symbols + [index_code]
     
-    # 2. 下载历史行情 (history)
-    # 这里的 history 接口在 gm 3.x 以后支持多支股票查询，但为了简单和断点续传，我们仍以 symbol 为单位保存
-    # 转换为 history 偏好的时间格式
-    h_start = f"{start_date} 09:00:00"
+    # 如果是全量模式，重写起始日期
+    h_start_date = "2017-01-01" if full_history else start_date
+    
+    h_start = f"{h_start_date} 09:00:00"
     h_end = f"{end_date} 16:00:00"
-    download_category_data(base_pool, "history_1d", history, limiter, h_start, h_end)
+    
+    logging.info(f"Downloading 1d history (Format: Parquet)...")
+    download_category_data(base_pool, "history_1d", history, limiter, h_start, h_end, file_format='parquet')
+    
+    # 2.5 下载 1 分钟行情
+    if history_1m:
+        # 分钟线即使不是 full_history，也建议存为 Parquet
+        m1_start_date = "2017-01-01" if full_history else (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d")
+        logging.info(f"Downloading 1m history (Format: Parquet, Start: {m1_start_date})...")
+        
+        m1_start = f"{m1_start_date} 09:00:00"
+        m1_end = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        download_category_data(base_pool, "history_1m", history, limiter, m1_start, m1_end, frequency='1m', file_format='parquet')
     
     # 3. 下载日频估值 (valuation)
     # 指数本身通常没有估值和基本面数据，过滤掉
@@ -344,6 +444,8 @@ if __name__ == "__main__":
     parser.add_argument("--index", type=str, default="SHSE.000852", help="Index code (e.g., SHSE.000852 for CSI 1000)")
     parser.add_argument("--start", type=str, default=(datetime.now() - timedelta(days=365)).strftime("%Y-%m-%d"), help="Start date (YYYY-MM-DD)")
     parser.add_argument("--end", type=str, default=datetime.now().strftime("%Y-%m-%d"), help="End date (YYYY-MM-DD)")
+    parser.add_argument("--history-1m", action="store_true", help="Download 1m history")
+    parser.add_argument("--full-history", action="store_true", help="Download history from 2017-01-01 (10 years)")
     
     args = parser.parse_args()
     
@@ -353,4 +455,4 @@ if __name__ == "__main__":
     if not token:
         print("Error: No token provided. Use --token or set GM_TOKEN environment variable.")
     else:
-        run_download_workflow(token, args.start, args.end, args.index)
+        run_download_workflow(token, args.start, args.end, args.index, history_1m=args.history_1m, full_history=args.full_history)

@@ -8,15 +8,19 @@ from datetime import datetime
 
 # Import components from existing pipeline
 from src.etf_portfolio.main import fetch_etf_history, generate_reports, FULL_ETF_POOL
+from src.etf_portfolio.alphalens_utils import generate_factor_report
 
 def assemble_portfolio(scores: pd.Series, top_n=4, single_cap=0.35, energy_cap=0.20) -> pd.Series:
-    """Implement the ReLU Top-N capped allocation."""
-    # 1. Top N and ReLU
+    """
+    Implement a robust projection for ReLU Top-N capped allocation.
+    Ensures weights sum to 1.0 while respecting single-asset and energy-group caps.
+    """
+    # 1. Top N selection and ReLU (non-negative)
     s = scores.copy()
     s = s.nlargest(top_n)
     s = s.clip(lower=0) 
     
-    if s.sum() <= 0:
+    if s.sum() <= 1e-9:
         # Fallback to defense
         fallback = pd.Series(0.0, index=scores.index)
         if 'SHSE.511260' in scores.index:
@@ -27,48 +31,57 @@ def assemble_portfolio(scores: pd.Series, top_n=4, single_cap=0.35, energy_cap=0
 
     # Initialize weights
     w = s / s.sum()
-    
-    # Energy indices (Oil ETFs)
     energy_assets = [c for c in w.index if c in ['SZSE.162411', 'SHSE.501018']]
     
-    # Iterative capping (Simple iterative approach to handle overlapping constraints)
-    for _ in range(5):
-        # Apply energy cap
-        energy_w = w[energy_assets].sum()
-        if energy_w > energy_cap:
-            reduce_factor = energy_cap / energy_w
-            w[energy_assets] = w[energy_assets] * reduce_factor
+    # 2. Iterative Projection (Clip and Redistribute)
+    for _ in range(50):
+        prev_w = w.copy()
+        
+        # A. Apply Group Cap (Energy)
+        e_sum = w[energy_assets].sum()
+        if e_sum > energy_cap:
+            w[energy_assets] = w[energy_assets] * (energy_cap / (e_sum + 1e-9))
             
-        # Apply single cap
+        # B. Apply Box Cap (Single Asset)
         w = w.clip(upper=single_cap)
         
-        # Normalize non-capped
+        # C. Normalize (Redistribute gap to free assets)
         current_sum = w.sum()
-        if np.isclose(current_sum, 1.0, atol=1e-8):
+        gap = 1.0 - current_sum
+        
+        if abs(gap) < 1e-7:
             break
             
-        # Distribute remainder
-        remainder = 1.0 - current_sum
-        # Items that can receive more (not at single cap and NOT strictly capped energy assets if energy cap is hit)
-        # For simplicity in this MVP, we just distribute to those under single_cap
-        # but to be truly correct with energy_cap, we should be careful.
-        # Given the plan's code, we follow it:
-        can_receive = w.index[(w < single_cap) & (~w.index.isin(energy_assets))]
-        
-        if len(can_receive) == 0:
-            # If nothing can receive, try distributing to all non-maxed items
-            can_receive = w.index[w < single_cap]
-            if len(can_receive) == 0:
-                break
+        # Identify assets that are "free" (not at single cap and not in a maxed-out energy group)
+        # To simplify, we'll distribute to all assets not at their single cap, 
+        # but if we are at energy cap, we skip energy assets.
+        is_energy_hit = w[energy_assets].sum() >= energy_cap - 1e-7
+        can_receive = w.index[w < single_cap - 1e-7]
+        if is_energy_hit:
+            can_receive = [c for c in can_receive if c not in energy_assets]
             
-        add_per = remainder / len(can_receive)
-        w[can_receive] += add_per
+        if len(can_receive) == 0:
+            # Emergency: if no one can receive, we can't satisfy sum=1 with these constraints
+            # This usually means constraints were too tight, but here sum(top_n * single_cap) should be > 1
+            break
+            
+        # Distribute proportional to existing weights or equally if weights are 0
+        w_can = w[can_receive]
+        if w_can.sum() > 1e-9:
+            w[can_receive] += gap * (w_can / w_can.sum())
+        else:
+            w[can_receive] += gap / len(can_receive)
+            
+        if np.allclose(w, prev_w, atol=1e-8):
+            break
+
+    return w / w.sum()
 
     # Final normalization just in case
     return w / w.sum()
 
-def build_features(prices: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
-    """Build multi-index features and labels for the ETF pool."""
+def build_features(prices: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """Build multi-index features, labels, and macro features."""
     close = prices.xs('close', level='field', axis=1)
     high = prices.xs('high', level='field', axis=1)
     low = prices.xs('low', level='field', axis=1)
@@ -104,14 +117,10 @@ def build_features(prices: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
             abs(s_high - s_close.shift()),
             abs(s_low - s_close.shift())
         ], axis=1).max(axis=1)
-        df['atr_norm_20'] = tr.rolling(20).mean() / s_close
+        df['atr_norm_20'] = tr.rolling(20).mean() / (s_close + 1e-9)
         
         # Volume Z-score 20
         df['vol_z_20'] = (s_vol - s_vol.rolling(20).mean()) / (s_vol.rolling(20).std() + 1e-9)
-        
-        # Macro indicator (common to all, but added to each row for panel)
-        if 'SHSE.518800' in close.columns and 'SZSE.162411' in close.columns:
-             df['gold_oil_ratio'] = close['SHSE.518800'] / close['SZSE.162411']
         
         df.columns = [f"{symbol}_{col}" for col in df.columns]
         all_features.append(df)
@@ -125,20 +134,27 @@ def build_features(prices: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
     X = pd.concat(all_features, axis=1).astype(float)
     y = pd.concat(all_labels, axis=1).astype(float)
     
-    return X, y
+    # Separate Macro Features (shared across assets)
+    macro_df = pd.DataFrame(index=close.index)
+    if 'SHSE.518800' in close.columns and 'SZSE.162411' in close.columns:
+        macro_df['gold_oil_ratio'] = close['SHSE.518800'] / (close['SZSE.162411'] + 1e-9)
+    
+    return X, y, macro_df
 
-def run_ml_rolling_backtest(prices: pd.DataFrame, train_window=750, test_gap=20) -> pd.Series:
+def run_ml_rolling_backtest(prices: pd.DataFrame, train_window=750, test_gap=20) -> Tuple[pd.Series, pd.Series]:
     """Run the rolling ML backtest pipeline."""
-    # Ensure all inputs are float to avoid object dtype issues in pipeline
+    # Ensure all inputs are float and naive timestamps to avoid issues
+    prices.index = pd.to_datetime(prices.index).tz_localize(None)
     prices = prices.astype(float)
-    X, y = build_features(prices)
+    X, y, macro = build_features(prices)
     close = prices.xs('close', level='field', axis=1)
     
-    # Filter rebalance dates (Monthly)
-    rebalance_dates = prices.index[prices.index.isin(prices.resample('ME').last().index)]
-    rebalance_dates = [d for d in rebalance_dates if d > prices.index[train_window + test_gap]]
+    # Filter rebalance dates (Actual Trading Days: Last available per month)
+    rebalance_dates = prices.index.to_series().groupby(prices.index.to_period('M')).max().values
+    rebalance_dates = [pd.Timestamp(d) for d in rebalance_dates if pd.Timestamp(d) > prices.index[train_window + test_gap]]
     
     all_weights = []
+    all_scores = []
     
     for t in tqdm(rebalance_dates, desc="ML Rolling Backtest"):
         # Training data: from T-train_window to T-test_gap
@@ -150,10 +166,11 @@ def run_ml_rolling_backtest(prices: pd.DataFrame, train_window=750, test_gap=20)
         
         # Convert wide to long (Panel) for training
         train_data = []
+        X_train_wide = pd.concat([X_train_wide, macro.loc[train_start:train_end]], axis=1)
+        
         for symbol in y.columns:
             sym_feat_cols = [c for c in X_train_wide.columns if c.startswith(f"{symbol}_")]
-            # Also include macro features that don't start with symbol
-            macro_cols = [c for c in X_train_wide.columns if not any(c.startswith(f"{s}_") for s in y.columns)]
+            macro_cols = list(macro.columns)
             
             temp_X = X_train_wide[sym_feat_cols + macro_cols].copy()
             temp_X.columns = [c.replace(f"{symbol}_", "") for c in temp_X.columns]
@@ -165,26 +182,41 @@ def run_ml_rolling_backtest(prices: pd.DataFrame, train_window=750, test_gap=20)
         if not train_data:
             continue
             
-        train_panel = pd.concat(train_data)
+        train_panel = pd.concat(train_data).sort_index()
         if train_panel.empty:
             continue
             
-        # Model Training
-        model = lgb.LGBMRegressor(
+        # Target Discretization: Convert continuous Sharpe to Quintiles (0-4) per date
+        # This is required for LGBMRanker's lambdarank objective
+        train_panel['target'] = train_panel.groupby(train_panel.index)['target'].transform(
+            lambda x: pd.qcut(x, 5, labels=False, duplicates='drop')
+        ).fillna(0).astype(int)
+        
+        # Model Training (Ranking)
+        model = lgb.LGBMRanker(
+            objective="lambdarank",
             n_estimators=100, 
             max_depth=5, 
             learning_rate=0.05, 
             verbosity=-1,
             random_state=42
         )
-        model.fit(train_panel.drop('target', axis=1), train_panel['target'])
+        
+        # Calculate group counts (number of assets per date)
+        groups = train_panel.index.value_counts().sort_index().values
+        
+        model.fit(
+            train_panel.drop('target', axis=1), 
+            train_panel['target'], 
+            group=groups
+        )
         
         # Prediction for T
-        X_test_wide = X.loc[[t]]
+        X_test_wide = pd.concat([X.loc[[t]], macro.loc[[t]]], axis=1)
         scores = {}
         for symbol in y.columns:
             sym_feat_cols = [c for c in X_test_wide.columns if c.startswith(f"{symbol}_")]
-            macro_cols = [c for c in X_test_wide.columns if not any(c.startswith(f"{s}_") for s in y.columns)]
+            macro_cols = list(macro.columns)
             
             temp_X_test = X_test_wide[sym_feat_cols + macro_cols].copy()
             temp_X_test.columns = [c.replace(f"{symbol}_", "") for c in temp_X_test.columns]
@@ -198,9 +230,13 @@ def run_ml_rolling_backtest(prices: pd.DataFrame, train_window=750, test_gap=20)
         # Portfolio Assembly
         weights = assemble_portfolio(pd.Series(scores))
         all_weights.append(weights.rename(t))
+        
+        # Save scores for factor analysis
+        s_ser = pd.Series(scores).rename(t)
+        all_scores.append(s_ser)
 
     if not all_weights:
-        return pd.Series()
+        return pd.Series(), pd.Series()
         
     weights_df = pd.concat(all_weights, axis=1).T
     weights_df.index = pd.to_datetime(weights_df.index)
@@ -210,7 +246,13 @@ def run_ml_rolling_backtest(prices: pd.DataFrame, train_window=750, test_gap=20)
     # Realign weights to apply from T+1 onwards
     portfolio_rets = (weights_df.reindex(daily_rets.index).ffill() * daily_rets).sum(axis=1)
     
-    return portfolio_rets.loc[rebalance_dates[0]:]
+    # Format scores for Alphalens (MultiIndex Series: [date, asset])
+    scores_df = pd.concat(all_scores, axis=1).T
+    scores_df.index = pd.to_datetime(scores_df.index)
+    scores_ser = scores_df.stack().swaplevel().sort_index()
+    scores_ser.index.names = ['date', 'asset'] # Standard Alphalens format
+    
+    return portfolio_rets.loc[rebalance_dates[0]:], scores_ser
 
 def main():
     # 1. Configuration
@@ -231,7 +273,7 @@ def main():
         
     # 3. Running ML Rolling Backtest
     print("\n[2/3] Running rolling ML backtest...")
-    ml_returns = run_ml_rolling_backtest(prices)
+    ml_returns, ml_scores = run_ml_rolling_backtest(prices)
     
     # 4. Generating Reports
     if not ml_returns.empty:
@@ -240,6 +282,11 @@ def main():
         ml_returns = ml_returns.astype(float)
         all_results = {'LightGBM_MVP': ml_returns}
         generate_reports(all_results, output_dir='reports_ml')
+        
+        # New: Generate Alphalens Factor Analysis
+        if not ml_scores.empty:
+            generate_factor_report(ml_scores, prices)
+            
         print("\nPipeline execution complete. Reports saved in 'reports_ml/' directory.")
     else:
         print("\nError: ML backtest produced no returns. Check train_window and data availability.")
