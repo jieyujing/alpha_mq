@@ -48,8 +48,12 @@ class GMDataSource:
     token: str
 
     def __post_init__(self):
+        self.set_token(self.token)
+
+    def set_token(self, token: str) -> None:
+        """设置GM API token"""
         from gm.api import set_token as gm_set_token
-        gm_set_token(self.token)
+        gm_set_token(token)
 
     def fetch_history(
         self,

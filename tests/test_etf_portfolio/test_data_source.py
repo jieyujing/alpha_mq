@@ -1,5 +1,4 @@
 # tests/test_etf_portfolio/test_data_source.py
-import pandas as pd
 import pytest
 from src.etf_portfolio.data_source import GMDataSource, DataSource
 
