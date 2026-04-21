@@ -45,7 +45,7 @@ def fetch_etf_history(
         source = _get_default_source()
 
     data_dict = {}
-    fields = 'symbol,bob,open,high,low,close'
+    fields = 'symbol,bob,open,high,low,close,volume,amount'
 
     for symbol in symbols:
         df = source.fetch_history(
@@ -59,7 +59,7 @@ def fetch_etf_history(
             continue
         df['bob'] = pd.to_datetime(df['bob'])
         df.set_index('bob', inplace=True)
-        data_dict[symbol] = df[['open', 'high', 'low', 'close']]
+        data_dict[symbol] = df[['open', 'high', 'low', 'close', 'volume', 'amount']]
 
     return align_and_ffill_prices(data_dict)
 
@@ -79,7 +79,7 @@ def align_and_ffill_prices(data_dict: Dict[str, pd.DataFrame]) -> pd.DataFrame:
 
     # 创建 MultiIndex 列索引
     symbols = sorted(data_dict.keys())
-    fields = ['open', 'high', 'low', 'close']
+    fields = ['open', 'high', 'low', 'close', 'volume', 'amount']
     col_index = pd.MultiIndex.from_product([symbols, fields], names=['symbol', 'field'])
 
     # 获取所有唯一日期
