@@ -54,3 +54,24 @@ def test_run_all_checks():
     assert "features" in results
     assert "pit" in results
     assert "summary" in results
+
+
+def test_generate_markdown():
+    """测试 Markdown 报告生成"""
+    from pipelines.data_quality.reporter import QualityReporter
+
+    config = {"exports_base": "data/exports", "qlib_output": "data/qlib_output"}
+    reporter = QualityReporter(config)
+
+    results = {
+        "ohlcv": {"symbol_count": 100, "min_date": "2025-01-01", "max_date": "2025-04-22", "missing_pct": 0.1},
+        "features": {"valuation": {"coverage": 99.5}},
+        "pit": {"symbol_count": 98},
+        "summary": {"total_files": 500, "total_size_mb": 100, "score": "A"},
+    }
+
+    md = reporter.generate_markdown(results)
+
+    assert "# CSI 1000 数据质量报告" in md
+    assert "OHLCV 数据" in md
+    assert "标的数量" in md
