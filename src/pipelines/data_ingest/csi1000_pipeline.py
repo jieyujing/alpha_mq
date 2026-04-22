@@ -166,5 +166,17 @@ class CSI1000QlibPipeline(DataPipeline):
             logging.error("dump_pit failed")
 
     def teardown(self):
-        """清理资源"""
-        logging.info("Pipeline teardown complete")
+        """清理资源并生成质量报告"""
+        import sys
+        from pathlib import Path
+
+        # 确保 src 目录在 sys.path 中
+        src_path = Path(__file__).parent.parent.parent
+        if str(src_path) not in sys.path:
+            sys.path.insert(0, str(src_path))
+
+        from pipelines.data_quality import QualityReporter
+
+        reporter = QualityReporter(self.config)
+        report_path = reporter.save_report()
+        logging.info(f"Pipeline teardown complete. Report: {report_path}")
