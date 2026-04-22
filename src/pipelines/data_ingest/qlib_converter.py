@@ -75,7 +75,8 @@ class OhlcvConverter:
         converted = []
         for parquet_file in self.exports_dir.glob("*.parquet"):
             gm_symbol = parquet_file.stem
-            if self.convert_symbol(gm_symbol):
+            result = self.convert_symbol(gm_symbol)
+            if result is not None and not result.empty:
                 converted.append(gm_symbol)
         return converted
 
