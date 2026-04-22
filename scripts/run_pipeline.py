@@ -5,10 +5,16 @@ GM → Qlib 数据管道 CLI 入口
     uv run python scripts/run_pipeline.py --config configs/csi1000_qlib.yaml
     uv run python scripts/run_pipeline.py --pipeline csi1000_qlib --stages clean,ingest
 """
+import sys
 import argparse
 import logging
 import yaml
 from pathlib import Path
+
+# 添加 src 目录到 Python 路径
+src_path = Path(__file__).resolve().parent.parent / "src"
+if src_path not in sys.path:
+    sys.path.insert(0, str(src_path))
 
 from pipelines import get_pipeline
 
