@@ -3,6 +3,7 @@
 
 提供时间覆盖和标的覆盖检测函数。
 """
+import glob
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -69,3 +70,32 @@ def check_time_coverage(file_path: Path, end_date: datetime, time_col: str = "bo
     except Exception as e:
         logging.warning(f"check_time_coverage failed for {file_path}: {e}")
         return CoverageResult(covered=False, last_date=None, gap_start=None)
+
+
+def check_symbol_coverage(category_dir: Path, target_pool: List[str],
+                          file_format: str = "parquet") -> SymbolGap:
+    """
+    检查目录下缺失的标的
+
+    Args:
+        category_dir: 数据类别目录
+        target_pool: 目标标的列表
+        file_format: 文件格式 (parquet/csv)
+
+    Returns:
+        SymbolGap: 标的覆盖检测结果
+    """
+    if not category_dir.exists():
+        return SymbolGap(existing=set(), missing=list(target_pool))
+
+    # 扫描已有文件
+    pattern = str(category_dir / f"*.{file_format}")
+    files = glob.glob(pattern)
+
+    # 提取已有标的
+    existing = {Path(f).stem for f in files}
+
+    # 计算缺失标的
+    missing = [s for s in target_pool if s not in existing]
+
+    return SymbolGap(existing=existing, missing=missing)

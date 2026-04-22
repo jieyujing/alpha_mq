@@ -101,3 +101,59 @@ class TestCheckTimeCoverage:
             result = check_time_coverage(file_path, end_date)
 
             assert result.covered is True
+
+
+class TestCheckSymbolCoverage:
+    """标的覆盖检测测试"""
+
+    def test_dir_not_exists(self):
+        """目录不存在时返回全部缺失"""
+        from data_download.incremental import check_symbol_coverage
+
+        target_pool = ["SHSE.600000", "SHSE.600001", "SZSE.000001"]
+        result = check_symbol_coverage(Path("/nonexistent/dir"), target_pool)
+
+        assert result.existing == set()
+        assert result.missing == target_pool
+
+    def test_partial_missing(self):
+        """部分标的缺失"""
+        from data_download.incremental import check_symbol_coverage
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # 创建部分文件
+            Path(tmpdir, "SHSE.600000.parquet").touch()
+            Path(tmpdir, "SZSE.000001.parquet").touch()
+
+            target_pool = ["SHSE.600000", "SHSE.600001", "SZSE.000001"]
+            result = check_symbol_coverage(Path(tmpdir), target_pool)
+
+            assert result.existing == {"SHSE.600000", "SZSE.000001"}
+            assert result.missing == ["SHSE.600001"]
+
+    def test_all_covered(self):
+        """全部标的已存在"""
+        from data_download.incremental import check_symbol_coverage
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            for symbol in ["SHSE.600000", "SHSE.600001", "SZSE.000001"]:
+                Path(tmpdir, f"{symbol}.parquet").touch()
+
+            target_pool = ["SHSE.600000", "SHSE.600001", "SZSE.000001"]
+            result = check_symbol_coverage(Path(tmpdir), target_pool)
+
+            assert result.existing == set(target_pool)
+            assert result.missing == []
+
+    def test_csv_format(self):
+        """CSV 格式文件检测"""
+        from data_download.incremental import check_symbol_coverage
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            Path(tmpdir, "SHSE.600000.csv").touch()
+
+            target_pool = ["SHSE.600000", "SHSE.600001"]
+            result = check_symbol_coverage(Path(tmpdir), target_pool, file_format="csv")
+
+            assert "SHSE.600000" in result.existing
+            assert result.missing == ["SHSE.600001"]
