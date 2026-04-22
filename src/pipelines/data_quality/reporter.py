@@ -9,7 +9,7 @@ import os
 
 import pandas as pd
 
-from pipelines.data_quality.checks import check_ohlcv_coverage, check_missing_values, check_duplicates
+from pipelines.data_quality.checks import check_ohlcv_coverage
 
 
 class QualityReporter:
@@ -35,18 +35,22 @@ class QualityReporter:
         sample_files = files[:10] if len(files) > 10 else files
 
         for f in sample_files:
-            missing = check_missing_values(Path(f), ["close", "volume"])
-            total_missing_pct += missing.get("close_missing_pct", 0)
-
-            # 先读取文件检查列名
+            # 单次读取文件，复用 DataFrame
             if f.endswith(".parquet"):
                 df_sample = pd.read_parquet(f)
             else:
                 df_sample = pd.read_csv(f)
 
+            # 计算缺失值
+            total_rows = len(df_sample)
+            if total_rows > 0 and "close" in df_sample.columns:
+                missing = df_sample["close"].isna().sum()
+                total_missing_pct += round(missing / total_rows * 100, 2)
+
+            # 检查重复行
             subset_cols = ["date"] if "date" in df_sample.columns else ["bob"]
-            dup = check_duplicates(Path(f), subset_cols)
-            total_duplicates += dup.get("duplicate_count", 0)
+            if all(col in df_sample.columns for col in subset_cols):
+                total_duplicates += int(df_sample.duplicated(subset=subset_cols).sum())
 
         avg_missing_pct = round(total_missing_pct / len(sample_files), 2) if sample_files else 0
 
@@ -80,7 +84,7 @@ class QualityReporter:
             coverage = len(cat_symbols) / len(ohlcv_symbols) * 100 if ohlcv_symbols else 0
             results[cat] = {
                 "coverage": round(coverage, 1),
-                "missing_pct": 0,
+                "missing_pct": None,
             }
 
         return results
@@ -97,7 +101,7 @@ class QualityReporter:
 
         return {
             "symbol_count": len(symbol_dirs),
-            "period_range": "待计算",
+            "period_range": None,
         }
 
     def _generate_summary(self) -> dict:
@@ -119,7 +123,7 @@ class QualityReporter:
         return {
             "total_files": total_files,
             "total_size_mb": total_size_mb,
-            "score": "待计算",
+            "score": None,
         }
 
     def run_all_checks(self) -> dict:
