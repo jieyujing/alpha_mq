@@ -4,10 +4,16 @@
 pipeline:
   name: csi1000_qlib              # Pipeline 注册名 (必须是 PIPELINE_REGISTRY 中的名称)
   stages:
+    - download                    # 从 GM API 增量下载数据 (需 GM token)
     - validate                    # 验证数据完整性
     - clean                       # 转换数据格式 (OHLCV + Features + PIT)
     - ingest                      # 调用 Qlib dump_bin/dump_pit 入库
-    # - download                  # 需 GM token，使用 data/scripts/download_gm.py 下载
+
+# 下载配置
+token: null                       # GM token (建议从环境变量 GM_TOKEN 获取)
+index_code: "SHSE.000852"         # 指数代码
+start_date: "2020-01-01"          # 数据起始日期
+end_date: null                    # 数据结束日期 (默认 today)
 
 # 数据目录配置
 exports_base: data/exports        # GM 下载数据存放目录 (history_1d, fundamentals_*, valuation 等)

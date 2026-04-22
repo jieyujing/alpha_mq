@@ -55,12 +55,46 @@ class CSI1000QlibPipeline(DataPipeline):
 
     def download(self):
         """
-        从 GM API 下载数据
+        从 GM API 增量下载数据
 
-        注意: 此实现依赖外部 GM token 配置。
-        如需实际下载，请使用 data/scripts/download_gm.py
+        调用 CSI1000Downloader 执行增量下载：
+        - 检查已有数据的时间覆盖
+        - 只下载缺失时间段
+        - 检查成分股变动，只下载新增标的
         """
-        logging.warning("download stage requires GM token. Use data/scripts/download_gm.py directly.")
+        import sys
+        from pathlib import Path
+
+        # 确保 src 目录在 sys.path 中
+        src_path = Path(__file__).parent.parent.parent
+        if str(src_path) not in sys.path:
+            sys.path.insert(0, str(src_path))
+
+        from data_download import CSI1000Downloader
+
+        # 获取 GM token (优先从环境变量)
+        token = self.config.get("token")
+        if not token:
+            import os
+            token = os.environ.get("GM_TOKEN")
+
+        if not token:
+            logging.warning("download stage requires GM token. Set token in config or GM_TOKEN env var.")
+            return
+
+        # 构建下载配置
+        download_config = {
+            "token": token,
+            "index_code": self.config.get("index_code", "SHSE.000852"),
+            "exports_base": str(self.exports_base),
+            "start_date": self.config.get("start_date", "2020-01-01"),
+            "end_date": self.config.get("end_date"),
+        }
+
+        logging.info(f"Starting incremental download for {download_config['index_code']}...")
+        downloader = CSI1000Downloader(download_config)
+        downloader.run()
+        logging.info("Download stage completed")
 
     def validate(self) -> List[str]:
         """验证数据完整性"""
