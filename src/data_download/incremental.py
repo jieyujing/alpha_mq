@@ -3,10 +3,11 @@
 
 提供时间覆盖和标的覆盖检测函数。
 """
+import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import List, Set
+from typing import List, Optional, Set
 
 import pandas as pd
 
@@ -14,9 +15,9 @@ import pandas as pd
 @dataclass
 class CoverageResult:
     """时间覆盖检测结果"""
-    covered: bool           # 是否已覆盖到结束日期
-    last_date: datetime     # 已有数据最新日期
-    gap_start: datetime     # 缺口起始日期 (若 covered=False)
+    covered: bool               # 是否已覆盖到结束日期
+    last_date: Optional[datetime]   # 已有数据最新日期 (无数据时为 None)
+    gap_start: Optional[datetime]   # 缺口起始日期 (若 covered=False，无数据时为 None)
 
 
 @dataclass
@@ -65,5 +66,6 @@ def check_time_coverage(file_path: Path, end_date: datetime, time_col: str = "bo
             gap_start = last_date + timedelta(days=1)
             return CoverageResult(covered=False, last_date=last_date, gap_start=gap_start)
 
-    except Exception:
+    except Exception as e:
+        logging.warning(f"check_time_coverage failed for {file_path}: {e}")
         return CoverageResult(covered=False, last_date=None, gap_start=None)
