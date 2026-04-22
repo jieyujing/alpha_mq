@@ -2,13 +2,14 @@
 # 用法: uv run python scripts/run_pipeline.py --config configs/csi1000_qlib.yaml
 
 pipeline:
-  name: csi1000_qlib
+  name: csi1000_qlib              # Pipeline 注册名 (必须是 PIPELINE_REGISTRY 中的名称)
   stages:
-    - validate
-    - clean
-    - ingest
+    - validate                    # 验证数据完整性
+    - clean                       # 转换数据格式 (OHLCV + Features + PIT)
+    - ingest                      # 调用 Qlib dump_bin/dump_pit 入库
+    # - download                  # 需 GM token，使用 data/scripts/download_gm.py 下载
 
 # 数据目录配置
-exports_base: data/exports      # GM 下载数据存放目录
-qlib_output: data/qlib_output   # Qlib CSV 中间输出目录
-qlib_bin: data/qlib_bin         # Qlib 二进制数据最终目录
+exports_base: data/exports        # GM 下载数据存放目录 (history_1d, fundamentals_*, valuation 等)
+qlib_output: data/qlib_output     # Qlib CSV 中间输出目录 (ohlcv/, pit/)
+qlib_bin: data/qlib_bin           # Qlib 二进制数据最终目录 (供 Qlib init 加载)
