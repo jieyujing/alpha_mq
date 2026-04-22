@@ -91,15 +91,36 @@ uv run python data/scripts/run_pipeline.py \
 ## 4. 模块结构
 
 ```
-src/etf_portfolio/
-├── data_source.py          # (已有) GMDataSource, RateLimiter
-├── decorators.py           # (已有) with_rate_limit, with_retry
-├── workflow.py             # (已有) DownloadWorkflow 基类 + HistoryWorkflow
-├── pipeline.py             # (新增) DataPipeline 抽象基类
-├── pipeline_csi1000.py     # (新增) CSI1000QlibPipeline 具体实现
-├── validator.py            # (新增) DataValidator
-└── qlib_converter.py       # (新增) SymbolAdapter, OhlcvConverter,
-                            #        FeatureConverter, PitConverter, QlibIngestor
+src/
+├── etf_portfolio/              # (已有) 保留现有代码，不动
+│   ├── data_source.py          # GMDataSource, RateLimiter
+│   ├── decorators.py           # with_rate_limit, with_retry
+│   ├── workflow.py             # DownloadWorkflow, CSI1000Workflow
+│   └── ...
+│
+├── core/                       # (新增) 从 etf_portfolio 提取的通用基础设施
+│   ├── __init__.py
+│   ├── data_source.py          # DataSource Protocol, RateLimiter（长期迁移目标）
+│   ├── decorators.py           # with_rate_limit, with_retry（长期迁移目标）
+│   └── symbol.py               # SymbolAdapter（GM ↔ Qlib 转换）
+│
+└── pipelines/                  # (新增) 所有 pipeline 相关代码
+    ├── __init__.py
+    ├── base.py                 # DataPipeline 抽象基类
+    ├── validator.py            # DataValidator
+    ├── clean_functions.py      # L1/L2/L3 纯函数（从独立脚本迁移）
+    │
+    ├── data_ingest/            # 子包：数据接入类 pipeline
+    │   ├── __init__.py
+    │   ├── csi1000_qlib.py     # CSI1000QlibPipeline
+    │   └── qlib_converter.py   # OhlcvConverter, FeatureConverter,
+    │                           # PitConverter, QlibIngestor
+    │
+    ├── factor/                 # 子包（占位）：因子计算 pipeline
+    │   └── __init__.py
+    │
+    └── ml/                     # 子包（占位）：模型训练 pipeline
+        └── __init__.py
 
 data/scripts/
 ├── download_gm.py          # (已有，保留，向后兼容)
@@ -109,7 +130,8 @@ data/scripts/
 └── run_pipeline.py         # (新增) 配置驱动的 CLI 入口
 
 configs/pipelines/
-└── csi1000_qlib.yaml       # (新增) pipeline 配置文件
+├── csi1000_qlib.yaml       # (新增) 数据接入 pipeline 配置
+└── ...                     # 未来：factor_alpha158.yaml, ml_lgbm.yaml
 ```
 
 ---
@@ -198,7 +220,7 @@ pipeline:
 ### 6.1 `DataPipeline`（抽象基类）
 
 ```python
-# src/etf_portfolio/pipeline.py
+# src/pipelines/base.py
 from abc import ABC, abstractmethod
 
 class DataPipeline(ABC):
@@ -266,11 +288,11 @@ class DataPipeline(ABC):
 ### 6.2 `CSI1000QlibPipeline`
 
 ```python
-# src/etf_portfolio/pipeline_csi1000.py
-from .pipeline import DataPipeline
-from .validator import DataValidator
-from .qlib_converter import QlibIngestor
-from .clean_functions import process_l1, process_l2, process_l3  # 迁移自独立脚本
+# src/pipelines/data_ingest/csi1000_qlib.py
+from pipelines.base import DataPipeline
+from pipelines.validator import DataValidator
+from pipelines.data_ingest.qlib_converter import QlibIngestor
+from pipelines.clean_functions import process_l1, process_l2, process_l3
 
 class CSI1000QlibPipeline(DataPipeline):
     
@@ -418,16 +440,17 @@ python scripts/dump_pit.py dump_update \
 
 | # | 任务 | 新增文件 | 依赖 |
 |---|------|----------|------|
-| 1 | `DataPipeline` 抽象基类 + 单元测试 | `pipeline.py` | 无 |
-| 2 | `SymbolAdapter` + 单元测试 | `qlib_converter.py` | 无 |
-| 3 | `OhlcvConverter` + `FeatureConverter` + 测试 | `qlib_converter.py` | 2 |
-| 4 | `PitConverter`（严格 PIT）+ 测试 | `qlib_converter.py` | 2 |
-| 5 | `QlibIngestor` 编排层（调用 dump_bin/dump_pit）| `qlib_converter.py` | 3, 4 |
-| 6 | `DataValidator` + 测试 | `validator.py` | 无 |
-| 7 | 迁移 L1/L2/L3 为纯函数（`clean_functions.py`） | `clean_functions.py` | 无 |
-| 8 | `CSI1000QlibPipeline` 具体实现 | `pipeline_csi1000.py` | 1, 5, 6, 7 |
-| 9 | YAML 配置文件 + `run_pipeline.py` CLI | `configs/`, `run_pipeline.py` | 8 |
-| 10 | 集成测试（dry-run，mock GM API） | `tests/` | 9 |
+| 1 | `src/pipelines/` 包骨架（含空子包） | `src/pipelines/__init__.py` 等 | 无 |
+| 2 | `DataPipeline` 抽象基类 + 单元测试 | `src/pipelines/base.py` | 1 |
+| 3 | `SymbolAdapter` + 单元测试 | `src/core/symbol.py` | 无 |
+| 4 | `OhlcvConverter` + `FeatureConverter` + 测试 | `src/pipelines/data_ingest/qlib_converter.py` | 3 |
+| 5 | `PitConverter`（严格 PIT）+ 测试 | `src/pipelines/data_ingest/qlib_converter.py` | 3 |
+| 6 | `QlibIngestor` 编排层（调用 dump_bin/dump_pit）| `src/pipelines/data_ingest/qlib_converter.py` | 4, 5 |
+| 7 | `DataValidator` + 测试 | `src/pipelines/validator.py` | 无 |
+| 8 | 迁移 L1/L2/L3 为纯函数 | `src/pipelines/clean_functions.py` | 无 |
+| 9 | `CSI1000QlibPipeline` 具体实现 | `src/pipelines/data_ingest/csi1000_qlib.py` | 2, 6, 7, 8 |
+| 10 | YAML 配置文件 + `run_pipeline.py` CLI | `configs/pipelines/`, `data/scripts/run_pipeline.py` | 9 |
+| 11 | 集成测试（dry-run，mock GM API） | `tests/pipelines/` | 10 |
 
 ---
 
