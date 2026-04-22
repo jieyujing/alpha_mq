@@ -17,4 +17,5 @@ def test_quality_reporter_init():
 
     assert reporter.exports_base == Path("data/exports")
     assert reporter.qlib_output == Path("data/qlib_output")
+    assert reporter.qlib_bin == Path("data/qlib_bin")
     assert reporter.report_path == Path("data/qlib_output/quality_report.md")
