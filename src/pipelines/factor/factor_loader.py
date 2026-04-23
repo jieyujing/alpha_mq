@@ -8,25 +8,6 @@ import qlib
 from qlib.contrib.data.handler import Alpha158
 
 
-class DFeatureLoader:
-    """从 Qlib 数据加载额外特征（非 Alpha158 特征）。"""
-
-    def __init__(self, fields: List[str], qlib_bin_path: str, instruments: str,
-                 start: str, end: str):
-        self.fields = fields
-        self.qlib_bin_path = qlib_bin_path
-        self.instruments = instruments
-        self.start = start
-        self.end = end
-
-    def load(self) -> pd.DataFrame:
-        """从 Qlib 加载指定字段。"""
-        from qlib.data import D
-        df = D.features(self.instruments, self.fields,
-                        start_time=self.start, end_time=self.end)
-        return df
-
-
 class FactorLoader:
     """加载 Qlib Alpha158 因子。"""
 
@@ -58,16 +39,27 @@ class FactorLoader:
 
         # 加载额外特征
         if extra_fields:
-            extra_loader = DFeatureLoader(
-                fields=extra_fields,
-                qlib_bin_path=self.qlib_bin_path,
-                instruments=instruments,
-                start=start,
-                end=end,
+            # 从已加载的 df 的 index 中提取 instrument 列表
+            symbol_list = list(df.index.get_level_values("instrument").unique())
+            from qlib.data import D
+            extra_df = D.features(
+                symbol_list,
+                [f"${f}" for f in extra_fields],
+                start_time=start,
+                end_time=end,
+                freq="day",
             )
-            extra_df = extra_loader.load()
+            # 重命名列 (去掉 $ 前缀)
+            extra_df.columns = [c.lstrip("$") for c in extra_df.columns]
+            # D.features 返回的 index 是 (instrument, datetime)，需要对齐到 (datetime, instrument)
+            if extra_df.index.names == ["instrument", "datetime"]:
+                extra_df = extra_df.swaplevel("instrument", "datetime").sort_index()
+                extra_df.index.names = ["datetime", "instrument"]
             # 合并
             common_index = df.index.intersection(extra_df.index)
+            if len(common_index) == 0:
+                logging.warning(f"No common index between Alpha158 and extra fields. Skipping extra fields.")
+                return df
             df = df.loc[common_index]
             extra_df = extra_df.loc[common_index]
             for col in extra_df.columns:

@@ -2,6 +2,7 @@
 """Alpha158 因子计算与过滤 Pipeline。"""
 import logging
 import yaml
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
@@ -56,7 +57,7 @@ class AlphaFactorPipeline(DataPipeline):
         self.qlib_bin = data_cfg.get("qlib_bin", "data/qlib_bin")
         self.instruments = data_cfg.get("instruments", "csi1000")
         self.start_date = data_cfg.get("start_date", "2020-01-01")
-        self.end_date = data_cfg.get("end_date")
+        self.end_date = data_cfg.get("end_date") or datetime.now().strftime("%Y-%m-%d")
 
         # Runtime state
         self.factors_df: Optional[pd.DataFrame] = None
@@ -95,11 +96,17 @@ class AlphaFactorPipeline(DataPipeline):
         """计算多周期 forward return 标签。"""
         periods = self.config.get("labels", {}).get("periods", [1, 5, 10, 20])
 
+        # 从已加载的因子数据中提取 instrument 列表
+        symbol_list = list(self.factors_df.index.get_level_values("instrument").unique())
+        date_range = self.factors_df.index.get_level_values("datetime")
+        start = str(date_range.min().date())
+        end = str(date_range.max().date())
+
         label_builder = LabelBuilder(qlib_bin_path=self.qlib_bin)
         close_df = label_builder.load_close_prices(
-            instruments=self.instruments,
-            start=self.start_date,
-            end=self.end_date,
+            instruments=symbol_list,
+            start=start,
+            end=end,
         )
 
         self.labels_dict = label_builder.compute_labels(close_df, periods=periods)

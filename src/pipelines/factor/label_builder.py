@@ -2,7 +2,7 @@
 """构建多周期收益率标签。"""
 import logging
 import pandas as pd
-from typing import List, Dict
+from typing import List, Dict, Union
 
 
 class LabelBuilder:
@@ -32,7 +32,7 @@ class LabelBuilder:
 
     def load_close_prices(
         self,
-        instruments: str,
+        instruments: Union[str, List[str]],
         start: str,
         end: str,
         buffer_days: int = 30,
@@ -41,6 +41,7 @@ class LabelBuilder:
         从 Qlib 加载 close 价格，带前后缓冲（用于 forward return 计算）。
 
         buffer_days: 向后多加载的天数，确保未来 N 日 return 不全部为 NaN。
+        instruments: symbol 列表
         """
         from datetime import datetime, timedelta
         from qlib.data import D
@@ -48,7 +49,8 @@ class LabelBuilder:
         extended_end = (datetime.strptime(end, "%Y-%m-%d")
                         + timedelta(days=buffer_days)).strftime("%Y-%m-%d")
         close_df = D.features(instruments, ["$close"],
-                              start_time=start, end_time=extended_end)
+                              start_time=start, end_time=extended_end,
+                              freq="day")
         close_df.columns = ["close"]
         logging.info(f"Loaded close prices: {len(close_df)} rows, range {start} to {extended_end}")
         return close_df

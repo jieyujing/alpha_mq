@@ -53,11 +53,13 @@ def test_load_with_extra_fields(loader):
     mock_handler = MagicMock()
     mock_handler.fetch.return_value = mock_alpha
 
+    # Mock the D.features call at the module level where it's imported
+    mock_d = MagicMock()
+    mock_d.features.return_value = mock_extra
+
     with patch("pipelines.factor.factor_loader.qlib") as mock_qlib:
         with patch("pipelines.factor.factor_loader.Alpha158", return_value=mock_handler):
-            with patch("pipelines.factor.factor_loader.DFeatureLoader") as mock_dloader:
-                mock_dloader.return_value.load.return_value = mock_extra
-
+            with patch("qlib.data.D", mock_d):
                 df = loader.load_alpha158(
                     instruments="csi1000",
                     start="2020-01-01",
