@@ -43,22 +43,28 @@ def main():
         format="%(asctime)s - %(levelname)s - %(message)s"
     )
 
-    # 加载配置
+    DEFAULT_STAGES = {
+        "csi1000_qlib": ["download", "validate", "clean", "ingest"],
+        "alpha_factor": ["ingest_bin", "factor_compute", "label_compute", "filter", "export", "report"],
+    }
+
     if args.config:
         config = load_config(args.config)
+        pipeline_name = config["pipeline"]["name"]
     elif args.pipeline:
-        stages = args.stages.split(",") if args.stages else ["download", "validate", "clean", "ingest"]
+        stages = args.stages.split(",") if args.stages else DEFAULT_STAGES.get(
+            args.pipeline, ["download", "validate", "clean", "ingest"])
         config = {
             "pipeline": {"name": args.pipeline, "stages": stages},
             "exports_base": args.exports_base,
             "qlib_output": args.qlib_output,
-            "qlib_bin": args.qlib_bin
+            "qlib_bin": args.qlib_bin,
         }
+        pipeline_name = args.pipeline
     else:
         parser.error("Either --config or --pipeline must be provided")
 
     # 获取 Pipeline 类并实例化
-    pipeline_name = config["pipeline"]["name"]
     pipeline_class = get_pipeline(pipeline_name)
     pipeline = pipeline_class(config)
 

@@ -5,10 +5,12 @@ Pipeline 注册表
 """
 from pipelines.base import DataPipeline
 from pipelines.data_ingest.csi1000_pipeline import CSI1000QlibPipeline
+from pipelines.factor.alpha_pipeline import AlphaFactorPipeline
 
 
 PIPELINE_REGISTRY: dict[str, type[DataPipeline]] = {
     "csi1000_qlib": CSI1000QlibPipeline,
+    "alpha_factor": AlphaFactorPipeline,
 }
 
 
