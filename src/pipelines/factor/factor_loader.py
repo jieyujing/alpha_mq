@@ -32,6 +32,11 @@ class FactorLoader:
             drop_labels: 是否删除 Alpha158 内置的 LABEL 列（防止数据泄露）。
                          LABEL0 是当日收益率，不应作为预测特征。
         """
+        # Windows spawn 模式导致多进程加载 scipy DLL 时页面文件不足
+        # 限制并发进程数为 1，避免内存问题
+        from qlib.config import C
+        C["NUM_USABLE_CPU"] = 1
+
         qlib.init(provider_uri=self.provider_uri)
 
         handler = Alpha158(
