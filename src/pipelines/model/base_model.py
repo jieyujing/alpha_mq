@@ -45,6 +45,11 @@ class BaseModel(ABC):
 
 def get_model(name: str, params: dict | None = None) -> BaseModel:
     """Create a model instance by name."""
+    # Validate name BEFORE importing to give useful error even when some modules are missing
+    known_names = ("elastic_net", "lgbm_regressor", "lgbm_ranker", "lgbm_classifier")
+    if name not in known_names:
+        raise ValueError(f"Unknown model: {name!r}. Available: {list(known_names)}")
+
     from pipelines.model.linear_model import LinearModel
     from pipelines.model.lgbm_classifier import LGBMClassModel
     from pipelines.model.lgbm_ranker import LGBMRankModel
@@ -56,6 +61,4 @@ def get_model(name: str, params: dict | None = None) -> BaseModel:
         "lgbm_ranker": LGBMRankModel,
         "lgbm_classifier": LGBMClassModel,
     }
-    if name not in registry:
-        raise ValueError(f"Unknown model: {name!r}. Available: {list(registry.keys())}")
     return registry[name](**(params or {}))
