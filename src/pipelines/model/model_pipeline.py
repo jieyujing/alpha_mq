@@ -187,6 +187,14 @@ class ModelPipeline(DataPipeline):
                 X_val = self.X[val_mask]
                 y_val = label[val_mask]
 
+                # Drop NaN labels
+                train_valid = y_train.notna()
+                val_valid = y_val.notna()
+                X_train = X_train[train_valid]
+                y_train = y_train[train_valid]
+                X_val = X_val[val_valid]
+                y_val = y_val[val_valid]
+
                 # Train
                 params = model_params.get(model_name, {})
                 model = get_model(model_name, params)
@@ -232,6 +240,14 @@ class ModelPipeline(DataPipeline):
 
             X_test = self.X[test_mask]
             y_test = label[test_mask]
+            # Drop NaN labels
+            test_valid = y_test.notna()
+            X_test = X_test[test_valid]
+            y_test = y_test[test_valid]
+
+            if X_test.empty:
+                logging.warning(f"Empty test set for {result.model_name} / {label_name}")
+                continue
 
             test_pred = result.model.predict(X_test)
             result.test_predictions = test_pred
@@ -310,11 +326,13 @@ class ModelPipeline(DataPipeline):
         output_cfg = self.config.get("output", {})
         alphalens_dir = Path(output_cfg.get("alphalens", "data/model_results/alphalens"))
 
-        # Find best model by oriented_val_icir
+        # Find best model by oriented_val_icir (filter NaN)
         best = None
         best_icir = -np.inf
         for r in self.results:
-            icir = abs(r.val_metrics.get("icir", 0))
+            icir = abs(r.val_metrics.get("icir", np.nan))
+            if np.isnan(icir):
+                continue
             if icir > best_icir and not r.oriented_test_signal.empty:
                 best_icir = icir
                 best = r
@@ -323,7 +341,7 @@ class ModelPipeline(DataPipeline):
             logging.warning("No valid model result found for Alphalens.")
             return
 
-        # Get close prices
+        # Get close prices - try factor pool first, then Qlib
         close_col = None
         for col in self.df.columns:
             if "close" in col.lower():
@@ -331,10 +349,25 @@ class ModelPipeline(DataPipeline):
                 break
 
         if close_col:
-            prices_wide = self.df.groupby("datetime")[close_col].mean().unstack()
+            # Factor pool has close column - pivot to wide
+            prices_wide = self.df[[close_col]].unstack()
+            prices_wide.columns = prices_wide.columns.droplevel(0)
         else:
-            logging.warning("No close price column found for Alphalens.")
-            return
+            # Load from Qlib
+            try:
+                import qlib
+                from qlib.data import D
+                qlib.init(provider_uri=self.config["data"]["qlib_bin"])
+                instruments = list(self.df.index.get_level_values("instrument").unique())
+                close_data = D.features(instruments, ["$close"], start_time="2020-01-01", end_time=None, freq="day")
+                close_data.columns = ["close"]
+                if close_data.index.names == ["instrument", "datetime"]:
+                    close_data = close_data.swaplevel().sort_index()
+                    close_data.index.names = ["datetime", "instrument"]
+                prices_wide = close_data["close"].unstack()
+            except Exception as e:
+                logging.warning(f"Could not load close prices for Alphalens: {e}")
+                return
 
         generate_alphalens_tear_sheet(
             factor=best.oriented_test_signal,
@@ -394,8 +427,9 @@ class ModelPipeline(DataPipeline):
                 )
         lines.append("")
 
-        # 3. Best model summary
-        best = max(self.results, key=lambda r: abs(r.val_metrics.get("icir", 0)))
+        # 3. Best model summary (filter NaN ICIR)
+        valid_results = [r for r in self.results if not np.isnan(r.val_metrics.get("icir", np.nan))]
+        best = max(valid_results, key=lambda r: abs(r.val_metrics.get("icir", 0))) if valid_results else self.results[0]
         lines.append(f"## 3. Best Model: {best.model_name} + {best.label_name}")
         lines.append("")
         lines.append(f"- Validation IC: {best.val_mean_ic:.4f}")

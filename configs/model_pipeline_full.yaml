@@ -1,0 +1,92 @@
+# Model Pipeline 配置 - 使用完整历史数据
+# 用法: uv run python scripts/run_pipeline.py --config configs/model_pipeline_full.yaml
+
+pipeline:
+  name: model
+  stages:
+    - load
+    - prepare
+    - split
+    - train
+    - predict
+    - orient
+    - backtest
+    - alphalens
+    - report
+
+data:
+  factor_pool: data/factor_pool_full.parquet
+  qlib_bin: data/qlib_bin_full
+
+features:
+  impute: "cross_section_median"
+  transform_method: "rank_pct"
+  winsorize:
+    enabled: true
+    lower: 0.01
+    upper: 0.99
+
+label:
+  winsorize:
+    enabled: true
+    lower: 0.01
+    upper: 0.99
+  rank_bins: 5
+  ranker_min_group_size: 30
+  classifier:
+    top_quantile: 0.8
+    bottom_quantile: 0.2
+
+split:
+  purge_by_label: true
+  train_start: "2020-01-01"
+  train_end: "2023-12-31"
+  val_start: "2024-01-01"
+  val_end: "2024-06-30"
+  test_start: "2024-07-01"
+  test_end: null
+
+model:
+  names: ["elastic_net", "lgbm_regressor", "lgbm_ranker", "lgbm_classifier"]
+  target_labels: ["label_1d", "label_5d", "label_10d", "label_20d"]
+  primary_label: "label_5d"
+  params:
+    elastic_net:
+      alpha: 0.01
+      l1_ratio: 0.2
+    lgbm_regressor:
+      num_leaves: 31
+      learning_rate: 0.05
+      n_estimators: 200
+      min_child_samples: 50
+      feature_fraction: 0.8
+      bagging_fraction: 0.8
+      bagging_freq: 5
+      seed: 42
+    lgbm_ranker:
+      num_leaves: 31
+      learning_rate: 0.05
+      n_estimators: 200
+      min_child_samples: 50
+      seed: 42
+    lgbm_classifier:
+      num_leaves: 31
+      learning_rate: 0.05
+      n_estimators: 200
+      min_child_samples: 50
+      seed: 42
+
+selection:
+  metric: "oriented_val_icir"
+
+backtest:
+  topk: 50
+  shift_signal_days: 1
+  transaction_cost_bps: 10
+  benchmark: "universe_equal_weight"
+  quantiles: 5
+
+output:
+  dir: data/model_results_full
+  report: data/model_results_full/model_report.md
+  alphalens: data/model_results_full/alphalens

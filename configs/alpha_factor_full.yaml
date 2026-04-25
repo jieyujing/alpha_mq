@@ -1,0 +1,51 @@
+# Alpha158 因子池 Pipeline - 使用完整历史数据
+# 用法: uv run python scripts/run_pipeline.py --config configs/alpha_factor_full.yaml
+
+pipeline:
+  name: alpha_factor
+  stages:
+    - factor_compute
+    - label_compute
+    - filter
+    - export
+    - report
+
+data:
+  qlib_csv: data/qlib_output/ohlcv_full
+  qlib_bin: data/qlib_bin_full
+  instruments: "csi1000"
+  start_date: "2020-01-01"
+  end_date: null
+  extra_fields:
+    - pe_ttm
+    - pb_mrq
+    - ps_ttm
+    - pcf_ttm_oper
+    - tot_mv
+    - a_mv
+    - turnrate
+
+labels:
+  primary: "label_5d"
+  periods: [1, 5, 10, 20]
+
+# Relaxed 模式：放宽阈值，保留更多因子
+filter:
+  drop_missing_label: {}
+  drop_high_missing:
+    threshold: 0.5
+  drop_high_inf:
+    threshold: 0.05
+  drop_low_variance:
+    variance_threshold: 1.0e-10
+    unique_ratio_threshold: 0.005
+  factor_quality:
+    min_abs_ic_mean: 0.002
+    min_abs_icir: 0.05
+    min_abs_monotonicity: 0.02
+    max_sign_flip_ratio: 0.55
+
+output:
+  parquet: data/factor_pool_full.parquet
+  yaml: configs/factor_pool_full.yaml
+  report: data/quality/factor_report_full.md
