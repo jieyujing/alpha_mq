@@ -1,0 +1,15 @@
+artifact_uri: file:///Users/link/Documents/alpha_mq/mlruns/1/717d668ed9c846748cd28f79645a02b0/artifacts
+end_time: 1775023516150
+entry_point_name: ''
+experiment_id: '1'
+lifecycle_stage: active
+name: ''
+run_id: 717d668ed9c846748cd28f79645a02b0
+run_uuid: 717d668ed9c846748cd28f79645a02b0
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1775023434582
+status: 3
+tags: []
+user_id: link

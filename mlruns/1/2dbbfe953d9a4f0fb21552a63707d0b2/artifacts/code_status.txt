@@ -1,0 +1,31 @@
+On branch master
+Your branch is ahead of 'origin/master' by 6 commits.
+  (use "git push" to publish your local commits)
+
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   data/handler.py
+	modified:   workflow_by_code.py
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+	.python-version
+	data/handler_fixed_beta.py
+	data/scripts/dump_bin.py
+	data/utils/symbol_utils.py
+	docs/plans/2026-03-25-futures-symbol-conversion-design.md
+	docs/plans/2026-03-26-consolidate-qlib-scripts-plan.md
+	docs/plans/2026-03-26-dynamic-qlib-feature-conversion-design.md
+	docs/plans/2026-03-26-dynamic-qlib-feature-conversion-plan.md
+	docs/plans/2026-03-26-qlib-data-conversion-plan.md
+	docs/plans/2026-03-29-qlib-rolling-workflow-design.md
+	docs/plans/2026-03-29-qlib-rolling-workflow-implementation.md
+	docs/superpowers/plans/2026-03-31-pathtarget-memory-optimization-plan.md
+	factor_framework.py
+	make_subset.py
+	model/lgbm_ranking.py
+	workflow_by_code_path_target.py
+	workflow_rolling.py
+
+no changes added to commit (use "git add" and/or "git commit -a")

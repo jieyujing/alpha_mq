@@ -1,0 +1,4 @@
+artifact_location: file:///Users/link/Documents/alpha_mq/mlruns/1
+experiment_id: '1'
+lifecycle_stage: active
+name: workflow_csi1000

@@ -1,0 +1,63 @@
+On branch master
+Your branch is ahead of 'origin/master' by 5 commits.
+  (use "git push" to publish your local commits)
+
+Changes not staged for commit:
+  (use "git add/rm <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	deleted:    CLAUDE.md
+	modified:   README.md
+	deleted:    backtest/config.py
+	modified:   configs/workflow_config.yaml
+	modified:   configs/workflow_config_fast.yaml
+	modified:   data/csv_source/SH000852.csv
+	modified:   data/downloader.py
+	modified:   data/handler.py
+	deleted:    data/qlib_converter.py
+	modified:   data/qlib_data/calendars/day.txt
+	modified:   data/qlib_data/instruments/all.txt
+	modified:   data/scripts/build_qlib_data.py
+	modified:   data/scripts/download_gm.py
+	modified:   data/scripts/download_pool.py
+	modified:   data/utils/env_utils.py
+	modified:   docs/plans/2026-03-24-cli-pipeline-design.md
+	modified:   docs/plans/2026-03-24-cli-pipeline-impl.md
+	modified:   docs/plans/2026-03-24-csi1000-data-download-design.md
+	modified:   docs/plans/2026-03-24-csi1000-data-download-impl.md
+	modified:   docs/plans/2026-03-24-csi1000-factor-strategy-design.md
+	deleted:    factor/dataset.py
+	deleted:    factor/handler.py
+	deleted:    factor/triple_barrier.py
+	deleted:    model/qlib_model.py
+	modified:   path_target.py
+	deleted:    run_pipeline.py
+	deleted:    tests/__init__.py
+	deleted:    tests/data/test_download_pool.py
+	deleted:    tests/data/test_env_utils.py
+	deleted:    tests/test_backtest_config.py
+	deleted:    tests/test_dataset.py
+	deleted:    tests/test_downloader.py
+	deleted:    tests/test_qlib_model.py
+	deleted:    tests/test_triple_barrier.py
+	modified:   uv.lock
+	modified:   workflow_by_code.py
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+	.python-version
+	data/handler_fixed_beta.py
+	data/scripts/dump_bin.py
+	data/utils/symbol_utils.py
+	docs/plans/2026-03-25-futures-symbol-conversion-design.md
+	docs/plans/2026-03-26-consolidate-qlib-scripts-plan.md
+	docs/plans/2026-03-26-dynamic-qlib-feature-conversion-design.md
+	docs/plans/2026-03-26-dynamic-qlib-feature-conversion-plan.md
+	docs/plans/2026-03-26-qlib-data-conversion-plan.md
+	docs/plans/2026-03-29-qlib-rolling-workflow-design.md
+	docs/plans/2026-03-29-qlib-rolling-workflow-implementation.md
+	docs/superpowers/plans/2026-03-31-pathtarget-memory-optimization-plan.md
+	factor_framework.py
+	make_subset.py
+	workflow_rolling.py
+
+no changes added to commit (use "git add" and/or "git commit -a")

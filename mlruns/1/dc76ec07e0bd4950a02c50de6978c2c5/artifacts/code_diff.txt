@@ -1,0 +1,211 @@
+diff --git a/data/handler.py b/data/handler.py
+index edbf7f7..800e1ec 100644
+--- a/data/handler.py
++++ b/data/handler.py
+@@ -173,4 +173,166 @@ class Alpha158PathTargetHandler(Alpha158):
+         # Task 5: 合并时处理对齐
+         target_df = target_df.reindex(df.index)
+         result = pd.concat([df, target_df], axis=1)
+-        return result.sort_index(axis=1)
+\ No newline at end of file
++        return result.sort_index(axis=1)
++
++
++class Alpha158PlusFundamentalsHandler(Alpha158PathTargetHandler):
++    """
++    Alpha158 因子 + 财务因子 + Path Target Handler.
++
++    在 Alpha158 技术因子基础上添加估值和基本面财务因子。
++
++    Parameters
++    ----------
++    fundamental_fields : list of str, optional
++        要包含的财务因子字段列表，默认包含估值因子和部分基本面因子。
++        字段格式为 qlib 表达式，如 "$pe_ttm", "$pb_lyr"。
++
++    可用财务因子：
++        - 估值因子: $pe_ttm, $pe_lyr, $pb_lyr, $pb_mrq, $ps_ttm, $pcf_ttm_oper
++        - 基本面因子: $ttl_ast, $ttl_eqy, $ttl_liab, $fix_ast, $mny_cptl
++    """
++
++    DEFAULT_FUNDAMENTAL_FIELDS = [
++        "$pe_ttm", "$pb_lyr", "$ps_ttm", "$pcf_ttm_oper",
++        "$ttl_ast", "$ttl_eqy", "$ttl_liab",
++    ]
++
++    def __init__(
++        self,
++        fundamental_fields: Optional[List[str]] = None,
++        **kwargs
++    ):
++        self.fundamental_fields = fundamental_fields or self.DEFAULT_FUNDAMENTAL_FIELDS
++        super().__init__(**kwargs)
++
++    def fetch(self, *args, **kwargs):
++        """
++        获取 Alpha158 features + 财务因子 + Path Target label.
++
++        Returns
++        -------
++        pd.DataFrame
++            特征列: Alpha158 (158列) + 财务因子 (N列)
++            标签列: path_target (1列)
++        """
++        # 获取父类数据 (Alpha158 features + path_target label)
++        df = super().fetch(*args, **kwargs)
++
++        # 获取财务因子数据
++        instruments = self.instruments
++        start_time = self.start_time
++        end_time = self.end_time
++
++        from qlib.config import C
++        provider_uri = C.provider_uri.get(C.DEFAULT_FREQ, "data/qlib_data")
++        instruments_list = _load_instruments(instruments, str(provider_uri))
++
++        fund_data = D.features(
++            instruments_list,
++            self.fundamental_fields,
++            start_time,
++            end_time
++        )
++
++        # Task 6: 解决特征数量不一致 - 即使数据为空也返回占位列
++        fund_cols = [c.replace("$", "") for c in self.fundamental_fields]
++        fund_index = pd.MultiIndex.from_product([["FEATURE"], fund_cols])
++        
++        if fund_data.empty:
++            fund_df = pd.DataFrame(index=df.index, columns=fund_index)
++        else:
++            fund_df = fund_data.swaplevel().sort_index()
++            fund_df.index.names = ["datetime", "instrument"]
++            fund_df.columns = [c.replace("$", "") for c in fund_df.columns]
++            fund_df.columns = pd.MultiIndex.from_product([["FEATURE"], fund_df.columns])
++            fund_df = fund_df.reindex(df.index)
++
++        # 确保列名集合一致并合并
++        fund_df = fund_df.reindex(columns=fund_index)
++        df = pd.concat([df, fund_df], axis=1)
++        print(f"DEBUG: FINAL Segment data shape: {df.shape}, Columns: {df.columns.get_level_values(0).value_counts().to_dict()}")
++        return df
++
++
++class Alpha158FundamentalsHandler(Alpha158):
++    """
++    Alpha158 因子 + 财务因子 Handler (使用 Alpha158 原生 label).
++
++    在 Alpha158 技术因子基础上添加估值和基本面财务因子。
++    标签使用 Alpha158 默认的下期收益率。
++
++    Parameters
++    ----------
++    fundamental_fields : list of str, optional
++        要包含的财务因子字段列表，默认包含估值因子和部分基本面因子。
++
++    可用财务因子：
++        - 估值因子: $pe_ttm, $pe_lyr, $pb_lyr, $pb_mrq, $ps_ttm, $pcf_ttm_oper
++        - 基本面因子: $ttl_ast, $ttl_eqy, $ttl_liab, $fix_ast, $mny_cptl
++    """
++
++    DEFAULT_FUNDAMENTAL_FIELDS = [
++        "$pe_ttm", "$pb_lyr", "$ps_ttm", "$pcf_ttm_oper",
++        "$ttl_ast", "$ttl_eqy", "$ttl_liab",
++    ]
++
++    def __init__(
++        self,
++        fundamental_fields: Optional[List[str]] = None,
++        benchmark: str = "SH000852",
++        **kwargs
++    ):
++        self.fundamental_fields = fundamental_fields or self.DEFAULT_FUNDAMENTAL_FIELDS
++        self.benchmark = benchmark
++        super().__init__(**kwargs)
++
++    def fetch(self, *args, **kwargs):
++        """
++        获取 Alpha158 features + 财务因子 + Alpha158 原生 label.
++
++        Returns
++        -------
++        pd.DataFrame
++            特征列: Alpha158 (158列) + 财务因子 (N列)
++            标签列: Alpha158 原生 label (下期收益率)
++        """
++        # 获取父类数据 (Alpha158 features + 原生 label)
++        df = super().fetch(*args, **kwargs)
++        # Debug: print column count
++        print(f"DEBUG: Segment data shape: {df.shape}, Columns: {df.columns.get_level_values(0).value_counts().to_dict()}")
++
++        # 获取财务因子数据
++        instruments = self.instruments
++        start_time = self.start_time
++        end_time = self.end_time
++
++        from qlib.config import C
++        provider_uri = C.provider_uri.get(C.DEFAULT_FREQ, "data/qlib_data")
++        instruments_list = _load_instruments(instruments, str(provider_uri))
++
++        fund_data = D.features(
++            instruments_list,
++            self.fundamental_fields,
++            start_time,
++            end_time
++        )
++
++        # Task 6: 解决特征数量不一致 - 即使数据为空也返回占位列
++        fund_cols = [c.replace("$", "") for c in self.fundamental_fields]
++        fund_index = pd.MultiIndex.from_product([["FEATURE"], fund_cols])
++
++        if fund_data.empty:
++            fund_df = pd.DataFrame(index=df.index, columns=fund_index)
++        else:
++            fund_df = fund_data.swaplevel().sort_index()
++            fund_df.index.names = ["datetime", "instrument"]
++            fund_df.columns = [c.replace("$", "") for c in fund_df.columns]
++            fund_df.columns = pd.MultiIndex.from_product([["FEATURE"], fund_df.columns])
++            fund_df = fund_df.reindex(df.index)
++
++        # 合并并保证列的一致性
++        fund_df = fund_df.reindex(columns=fund_index)
++        df = pd.concat([df, fund_df], axis=1)
++        print(f"DEBUG: FINAL Segment data shape: {df.shape}, Columns: {df.columns.get_level_values(0).value_counts().to_dict()}")
++        return df
+\ No newline at end of file
+diff --git a/workflow_by_code.py b/workflow_by_code.py
+index b0519e7..0f001ea 100644
+--- a/workflow_by_code.py
++++ b/workflow_by_code.py
+@@ -36,17 +36,19 @@ CSI1000_MARKET = "all"  # 使用完整1000股票数据集
+ 
+ CSI1000_GBDT_TASK = {
+     "model": {
+-        "class": "LGBModel",
+-        "module_path": "qlib.contrib.model.gbdt",
++        "class": "LGBRankingModel",
++        "module_path": "model.lgbm_ranking",
+         "kwargs": {
+-            "loss": "mse",
++            "objective": "lambdarank",
++            "metric": "ndcg",
++            "eval_at": [3, 5, 10],      # NDCG 考查 TopK
+             "colsample_bytree": 0.8879,
+             "learning_rate": 0.0421,
+             "subsample": 0.8789,
+             "lambda_l1": 205.6999,
+             "lambda_l2": 580.9768,
+             "max_depth": 8,
+-            "num_leaves": 210,
++            "num_leaves": 50,
+             "num_threads": None,
+             "verbosity": 1,
+         },
+@@ -56,7 +58,7 @@ CSI1000_GBDT_TASK = {
+         "module_path": "qlib.data.dataset",
+         "kwargs": {
+             "handler": {
+-                "class": "Alpha158PathTargetHandler",
++                "class": "Alpha158FundamentalsHandler",
+                 "module_path": "data.handler",
+                 "kwargs": {
+                     "start_time": "2015-01-05",

@@ -1,0 +1,4 @@
+artifact_location: file:///Users/link/Documents/alpha_mq/mlruns/2
+experiment_id: '2'
+lifecycle_stage: active
+name: Experiment

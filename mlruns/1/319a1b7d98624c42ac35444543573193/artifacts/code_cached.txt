@@ -1,0 +1,12 @@
+diff --git a/.gitignore b/.gitignore
+index 450c3ad..98798f4 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -108,4 +108,5 @@ credentials.json
+ # Debug files
+ check_dataset.py
+ check_qlib.py
+-debug_backtest.py
+\ No newline at end of file
++debug_backtest.py
++*.md
