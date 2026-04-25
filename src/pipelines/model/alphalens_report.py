@@ -4,11 +4,29 @@ from pathlib import Path
 
 import pandas as pd
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 
-import alphalens
+import alphalens.performance as perf
+import alphalens.plotting as plotting
+
+
+def _save_plot(axes, pdf):
+    """Save a plotting function's result to PDF, handling both single Axes and arrays."""
+    if hasattr(axes, "__len__") and not hasattr(axes, "figure"):
+        fig = axes[0].figure
+    elif hasattr(axes, "figure"):
+        fig = axes.figure
+    else:
+        return False
+    if fig:
+        fig.set_size_inches(16, 10)
+        pdf.savefig(fig)
+        plt.close(fig)
+        return True
+    return False
 
 
 def generate_alphalens_tear_sheet(
@@ -43,6 +61,7 @@ def generate_alphalens_tear_sheet(
     prices = prices.sort_index()
 
     try:
+        import alphalens
         factor_data = alphalens.utils.get_clean_factor_and_forward_returns(
             factor=factor,
             prices=prices,
@@ -58,76 +77,50 @@ def generate_alphalens_tear_sheet(
     factor_data.to_csv(output_dir / "factor_data.csv")
 
     # Save quantile returns CSV
-    mean_ret = alphalens.performance.mean_return_by_quantile(factor_data)[0]
+    mean_ret, _ = perf.mean_return_by_quantile(factor_data)
     mean_ret.to_csv(output_dir / "quantile_returns.csv")
 
-    # Generate PDF
+    # Generate PDF with all available plots
     pdf_path = output_dir / "tear_sheet.pdf"
+    figs_saved = 0
+
     with PdfPages(str(pdf_path)) as pdf:
-        matplotlib.rcParams["figure.figsize"] = (16, 10)
+        ic = perf.factor_information_coefficient(factor_data)
 
-        # Page 1: IC Analysis
-        ic = alphalens.performance.factor_information_coefficient(factor_data)
-        fig, axes = plt.subplots(2, 2, figsize=(16, 12))
-        try:
-            alphalens.plotting.plot_ic_ts(ic, ax=axes[0, 0])
-        except Exception:
-            axes[0, 0].text(0.5, 0.5, "IC Time Series: N/A", ha="center", va="center")
-        try:
-            alphalens.plotting.plot_ic_hist(ic, ax=axes[0, 1])
-        except Exception:
-            axes[0, 1].text(0.5, 0.5, "IC Histogram: N/A", ha="center", va="center")
-        try:
-            alphalens.plotting.plot_ic_monthly(ic, ax=axes[1, 0])
-        except Exception:
-            axes[1, 0].text(0.5, 0.5, "IC Monthly: N/A", ha="center", va="center")
-        fig.suptitle("Information Coefficient Analysis", fontsize=16)
-        fig.tight_layout()
-        pdf.savefig(fig)
-        plt.close(fig)
+        if _save_plot(plotting.plot_ic_ts(ic), pdf):
+            figs_saved += 1
+        if _save_plot(plotting.plot_ic_hist(ic), pdf):
+            figs_saved += 1
+        if _save_plot(plotting.plot_ic_qq(ic), pdf):
+            figs_saved += 1
 
-        # Page 2: Quantile Analysis
-        mean_ret_q, std_q = alphalens.performance.mean_return_by_quantile(factor_data)
-        fig, axes = plt.subplots(2, 2, figsize=(16, 12))
-        try:
-            alphalens.plotting.plot_quantile_average_cumulative_return(
-                mean_ret_q, ax=axes[0, 0]
-            )
-        except Exception:
-            axes[0, 0].text(0.5, 0.5, "Cumulative Returns: N/A", ha="center", va="center")
-        try:
-            alphalens.plotting.plot_cumulative_returns_by_quantile(
-                mean_ret_q, ax=axes[0, 1]
-            )
-        except Exception:
-            axes[0, 1].text(0.5, 0.5, "Quantile Returns: N/A", ha="center", va="center")
-        try:
-            alphalens.plotting.plot_mean_quantile_returns_spread_time_series(
-                mean_ret_q, std_q, ax=axes[1, 0]
-            )
-        except Exception:
-            axes[1, 0].text(0.5, 0.5, "Spread Returns: N/A", ha="center", va="center")
-        fig.suptitle("Quantile Analysis", fontsize=16)
-        fig.tight_layout()
-        pdf.savefig(fig)
-        plt.close(fig)
+        mean_ret, std_ret = perf.mean_return_by_quantile(factor_data)
+        if _save_plot(plotting.plot_mean_quantile_returns_spread_time_series(mean_ret, std_ret), pdf):
+            figs_saved += 1
+        if _save_plot(plotting.plot_quantile_returns_bar(mean_ret), pdf):
+            figs_saved += 1
+        if _save_plot(plotting.plot_quantile_returns_violin(mean_ret[["5D"]]), pdf):
+            figs_saved += 1
 
-        # Page 3: Turnover
-        fig, ax = plt.subplots(1, 1, figsize=(16, 6))
         try:
-            quantile_turnover = alphalens.performance.quantile_turnover(
-                alphalens.utils.get_clean_factor_and_forward_returns(
-                    factor=factor, prices=prices, periods=periods, quantiles=quantiles,
-                    filter_zscore=None,
-                ),
-                quantiles,
-            )
-            quantile_turnover.plot(ax=ax, title="Quantile Turnover")
-        except Exception:
-            ax.text(0.5, 0.5, "Turnover: N/A", ha="center", va="center")
-        fig.tight_layout()
-        pdf.savefig(fig)
-        plt.close(fig)
+            mean_monthly_ic = perf.mean_information_coefficient(factor_data, by_time="ME")
+            if _save_plot(plotting.plot_monthly_ic_heatmap(mean_monthly_ic), pdf):
+                figs_saved += 1
+        except Exception as e:
+            logging.warning(f"Monthly IC heatmap failed: {e}")
 
-    logging.info(f"Alphalens tear sheet saved to {pdf_path}")
-    return pdf_path
+        try:
+            factor_autocorr = perf.factor_rank_autocorrelation(factor_data)
+            if _save_plot(plotting.plot_factor_rank_auto_correlation(factor_autocorr), pdf):
+                figs_saved += 1
+        except Exception as e:
+            logging.warning(f"Autocorrelation plot failed: {e}")
+
+        if _save_plot(plotting.plot_top_bottom_quantile_turnover(mean_ret, period=5), pdf):
+            figs_saved += 1
+
+    if figs_saved > 0:
+        logging.info(f"Alphalens tear sheet saved to {pdf_path} ({figs_saved} pages)")
+        return pdf_path
+    logging.warning("No figures were saved to tear sheet.")
+    return None
