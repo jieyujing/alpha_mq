@@ -1,0 +1,62 @@
+# Smoke test: single model, single label
+pipeline:
+  name: model
+  stages:
+    - load
+    - prepare
+    - split
+    - train
+    - predict
+    - orient
+    - report
+
+data:
+  factor_pool: data/factor_pool_relaxed.parquet
+  qlib_bin: ../../data/qlib_bin
+
+features:
+  impute: "cross_section_median"
+  transform_method: "rank_pct"
+  winsorize:
+    enabled: true
+    lower: 0.01
+    upper: 0.99
+
+label:
+  winsorize:
+    enabled: true
+    lower: 0.01
+    upper: 0.99
+  rank_bins: 5
+  ranker_min_group_size: 30
+  classifier:
+    top_quantile: 0.8
+    bottom_quantile: 0.2
+
+split:
+  purge_by_label: false  # Short data, no purge for smoke test
+  train_start: "2026-03-02"
+  train_end: "2026-03-31"
+  val_start: "2026-04-01"
+  val_end: "2026-04-10"
+  test_start: "2026-04-11"
+  test_end: null
+
+model:
+  names: ["elastic_net"]
+  target_labels: ["label_5d"]
+  primary_label: "label_5d"
+  params:
+    elastic_net:
+      alpha: 0.01
+      l1_ratio: 0.2
+
+backtest:
+  topk: 50
+  shift_signal_days: 1
+  transaction_cost_bps: 10
+
+output:
+  dir: data/model_results
+  report: data/model_results/model_report_smoke.md
+  alphalens: data/model_results/alphalens

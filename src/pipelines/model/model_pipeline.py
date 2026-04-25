@@ -82,7 +82,7 @@ class ModelPipeline(DataPipeline):
 
         self.preprocessor = FeaturePreprocessor(
             impute=feat_cfg.get("impute", "cross_section_median"),
-            transform=feat_cfg.get("transform", "rank_pct"),
+            transform_method=feat_cfg.get("transform_method", "rank_pct"),
             winsorize_enabled=feat_cfg.get("winsorize", {}).get("enabled", True),
             winsorize_lower=feat_cfg.get("winsorize", {}).get("lower", 0.01),
             winsorize_upper=feat_cfg.get("winsorize", {}).get("upper", 0.99),
@@ -409,7 +409,7 @@ class ModelPipeline(DataPipeline):
         lines.append("")
 
         # 4. Factor Importance (top 20 for best model)
-        imp = best.feature_importance()
+        imp = best.model.feature_importance()
         if not imp.empty:
             lines.append("## 4. Top 20 Feature Importance")
             lines.append("")
