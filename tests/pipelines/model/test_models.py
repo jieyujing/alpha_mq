@@ -67,3 +67,71 @@ def test_compute_metrics_from_ic_series():
     assert "icir" in metrics
     assert metrics["ic_mean"] > 0
     assert metrics["positive_ratio"] == pytest.approx(0.8)
+
+
+# === Model wrapper tests ===
+from pipelines.model.linear_model import LinearModel
+from pipelines.model.lgbm_regressor import LGBMRegModel
+from pipelines.model.lgbm_ranker import LGBMRankModel
+from pipelines.model.lgbm_classifier import LGBMClassModel
+
+
+def _make_train_data(n_dates=20, n_symbols=40, n_features=5):
+    """Create sufficiently large training data for model tests.
+
+    At least 35 symbols needed for binary/rank label transforms (min_group_size=30).
+    """
+    dates = pd.date_range("2020-01-01", periods=n_dates, freq="B")
+    symbols = [f"SH60000{i}" for i in range(1, n_symbols + 1)]
+    index = pd.MultiIndex.from_product([dates, symbols], names=["datetime", "instrument"])
+    rng = np.random.RandomState(42)
+    X = pd.DataFrame({f"f{i}": rng.randn(len(index)) for i in range(n_features)}, index=index)
+    y = pd.Series(rng.randn(len(index)), index=index)
+    return X, y
+
+
+def test_get_model_all_types():
+    for name in ["elastic_net", "lgbm_regressor", "lgbm_ranker", "lgbm_classifier"]:
+        model = get_model(name)
+        assert model.name in [name, "elastic_net", "lgbm_regressor", "lgbm_ranker", "lgbm_classifier"]
+
+
+def test_linear_model_fit_predict():
+    X, y = _make_train_data()
+    model = LinearModel(alpha=0.01, l1_ratio=0.2)
+    model.fit(X, y)
+    pred = model.predict(X)
+    assert len(pred) == len(y)
+    assert not pred.isna().any()
+    imp = model.feature_importance()
+    assert len(imp) == X.shape[1]
+
+
+def test_lgbm_regressor_fit_predict():
+    X, y = _make_train_data()
+    model = LGBMRegModel(n_estimators=10, verbose=-1)
+    model.fit(X, y)
+    pred = model.predict(X)
+    assert len(pred) == len(y)
+    assert not pred.isna().any()
+    imp = model.feature_importance()
+    assert len(imp) == X.shape[1]
+
+
+def test_lgbm_ranker_fit_predict():
+    X, y = _make_train_data()
+    model = LGBMRankModel(n_estimators=10, verbose=-1)
+    model.fit(X, y)
+    pred = model.predict(X)
+    assert len(pred) == len(y)
+
+
+def test_lgbm_classifier_fit_predict():
+    X, y = _make_train_data()
+    model = LGBMClassModel(n_estimators=10, verbose=-1)
+    model.fit(X, y)
+    pred = model.predict(X)
+    assert len(pred) == len(y)
+    # Should be probability values (0 to 1)
+    assert pred.min() >= 0
+    assert pred.max() <= 1
