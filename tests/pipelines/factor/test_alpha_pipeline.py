@@ -66,3 +66,21 @@ def test_stage_method_map(config):
         "report": "generate_report",
     }
     assert AlphaFactorPipeline.STAGE_METHOD_MAP == expected_map
+
+
+def test_build_filter_chain_with_leakage_and_dedup(config):
+    """Pipeline should include DropLeakageStep and DeduplicateStep when configured."""
+    config["filter"]["drop_leakage"] = {"prefixes": ["LABEL"]}
+    config["filter"]["deduplicate"] = {"corr_threshold": 0.8}
+
+    pipeline = AlphaFactorPipeline(config)
+    chain = pipeline._build_filter_chain(config["filter"])
+
+    step_names = []
+    current = chain
+    while current is not None:
+        step_names.append(current.name)
+        current = current._next
+
+    assert "DropLeakageStep" in step_names
+    assert "DeduplicateStep" in step_names

@@ -15,10 +15,12 @@ from pipelines.factor.label_builder import LabelBuilder
 from pipelines.factor.filter_chain import (
     FilterContext,
     DropMissingLabelStep,
+    DropLeakageStep,
     DropHighMissingFeatureStep,
     DropHighInfFeatureStep,
     DropLowVarianceFeatureStep,
     FactorQualityFilterStep,
+    DeduplicateStep,
 )
 
 
@@ -121,7 +123,12 @@ class AlphaFactorPipeline(DataPipeline):
 
         primary_y = self.labels_dict[primary_label]
 
-        # 对齐 factors 和 labels
+        # 对齐 factors 和 labels：确保索引级别顺序一致
+        # factors 使用 ['datetime', 'instrument']，labels 使用 ['instrument', 'datetime']
+        if primary_y.index.names != self.factors_df.index.names:
+            primary_y = primary_y.swaplevel().sort_index()
+            primary_y.index.names = self.factors_df.index.names
+
         common_index = self.factors_df.index.intersection(primary_y.index)
         X = self.factors_df.loc[common_index].copy()
         y = primary_y.loc[common_index].copy()
@@ -145,6 +152,10 @@ class AlphaFactorPipeline(DataPipeline):
 
         if "drop_missing_label" in cfg:
             steps.append(DropMissingLabelStep())
+
+        if "drop_leakage" in cfg:
+            c = cfg["drop_leakage"]
+            steps.append(DropLeakageStep(prefixes=c.get("prefixes", ["LABEL"])))
 
         if "drop_high_missing" in cfg:
             c = cfg["drop_high_missing"]
@@ -170,6 +181,14 @@ class AlphaFactorPipeline(DataPipeline):
                 max_sign_flip_ratio=c.get("max_sign_flip_ratio", 0.45),
             ))
 
+        if "deduplicate" in cfg:
+            c = cfg["deduplicate"]
+            steps.append(DeduplicateStep(
+                corr_threshold=c.get("corr_threshold", 0.8),
+                corr_method=c.get("corr_method", "spearman"),
+                keep_by=c.get("keep_by", "ic_mean"),
+            ))
+
         # 链接
         head = steps[0]
         for step in steps[1:]:
@@ -192,6 +211,10 @@ class AlphaFactorPipeline(DataPipeline):
             label_name = f"label_{period}d"
             if label_name in self.labels_dict:
                 lbl = self.labels_dict[label_name]
+                # 对齐索引顺序：labels 默认 ['instrument', 'datetime']，X 使用 ['datetime', 'instrument']
+                if lbl.index.names != result_df.index.names:
+                    lbl = lbl.swaplevel().sort_index()
+                    lbl.index.names = result_df.index.names
                 result_df[label_name] = lbl.loc[result_df.index]
 
         # 保存 Parquet

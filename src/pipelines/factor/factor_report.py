@@ -4,8 +4,27 @@ import logging
 from datetime import datetime
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
+
+
+# 因子分类规则
+_FACTOR_CATEGORIES = {
+    "momentum": ("MA", "SUMP", "SUMN", "SUMD"),
+    "volatility": ("STD", "RSQR", "RESI"),
+    "volume_price": ("CORR", "CNTP", "CNTN", "CNTD", "KUP", "KMID", "KLOW", "KHIG", "VMA"),
+    "quantile": ("QTL", "MIN", "MAX"),
+}
+
+_EXTRA_PREFIXES = ("pe_", "pb_", "ps_", "pcf_", "tot_", "a_mv", "turn")
+
+
+def _classify_factor(col: str) -> str:
+    for cat, prefixes in _FACTOR_CATEGORIES.items():
+        if col.startswith(prefixes):
+            return cat
+    if col.startswith(_EXTRA_PREFIXES):
+        return "extra"
+    return "other"
 
 
 class FactorQualityReporter:
@@ -41,10 +60,19 @@ class FactorQualityReporter:
         # -- Section 2: Factor Quality Stats --
         lines.extend(self._section_factor_quality(X_before, X_after, filter_artifacts))
 
-        # -- Section 3: Label Stats --
+        # -- Section 3: Top Retained Factor Details --
+        lines.extend(self._section_top_factors(X_after, filter_artifacts))
+
+        # -- Section 4: Factor Group Breakdown --
+        lines.extend(self._section_factor_groups(X_after))
+
+        # -- Section 5: Redundant Pairs --
+        lines.extend(self._section_redundant_pairs(filter_artifacts))
+
+        # -- Section 6: Label Stats --
         lines.extend(self._section_label_stats(all_labels))
 
-        # -- Section 4: Factor-Label Correlation --
+        # -- Section 7: Factor-Label Correlation --
         lines.extend(self._section_factor_label_corr(X_after, y))
 
         self.output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -73,7 +101,6 @@ class FactorQualityReporter:
         """因子质量统计。"""
         lines = ["---", "", "## 2. Factor Quality Statistics (因子质量统计)", ""]
 
-        # IC statistics from FactorQualityFilterStep
         stats_key = "FactorQualityFilterStep.factor_stats"
         if stats_key in artifacts:
             stats = artifacts[stats_key]
@@ -91,7 +118,6 @@ class FactorQualityReporter:
                     )
             lines.append("")
 
-        # Before/After summary
         lines.append("### Factor Pool Summary")
         lines.append("")
         lines.append(f"- **Total factors before filtering**: {X_before.shape[1]}")
@@ -100,21 +126,95 @@ class FactorQualityReporter:
         lines.append(f"- **Total samples**: {X_after.shape[0]}")
         lines.append("")
 
-        # Group comparison: Alpha158 vs extra
-        extra_prefixes = ("pe_", "pb_", "ps_", "pcf_", "tot_", "a_mv", "turn")
-        alpha_cols = [c for c in X_after.columns if not c.startswith(extra_prefixes) and not c.startswith("label_")]
-        extra_cols = [c for c in X_after.columns if c.startswith(extra_prefixes)]
-        lines.append("### Factor Group Comparison")
-        lines.append("")
-        lines.append(f"- **Alpha158 factors**: {len(alpha_cols)}")
-        lines.append(f"- **Extra features (valuation/market-cap)**: {len(extra_cols)}")
-        lines.append("")
+        return lines
 
+    def _section_top_factors(
+        self, X: pd.DataFrame, artifacts: dict
+    ) -> list[str]:
+        """保留因子详情：Top 15 按 |IC mean| 排序。"""
+        lines = ["---", "", "## 3. Top Retained Factor Details (保留因子详情 Top 15)", ""]
+
+        stats_key = "FactorQualityFilterStep.factor_stats"
+        if stats_key not in artifacts:
+            lines.append("*No factor stats available.*")
+            lines.append("")
+            return lines
+
+        stats = artifacts[stats_key]
+        retained = [c for c in X.columns if c in stats.index]
+        if not retained:
+            lines.append("*No retained factors found in stats.*")
+            lines.append("")
+            return lines
+
+        top = stats.loc[retained].abs().sort_values("ic_mean", ascending=False).head(15)
+
+        lines.append("| Rank | Factor | ic_mean | icir | monotonicity | sign_flip |")
+        lines.append("|------|--------|---------|------|--------------|-----------|")
+        for rank, (factor, row) in enumerate(top.iterrows(), 1):
+            lines.append(
+                f"| {rank} | {factor} | {row.get('ic_mean', 'N/A'): .4f} | "
+                f"{row.get('icir', 'N/A'): .4f} | "
+                f"{row.get('monotonicity', 'N/A'): .4f} | "
+                f"{row.get('sign_flip_ratio', 'N/A'):.4f} |"
+            )
+        lines.append("")
+        return lines
+
+    def _section_factor_groups(self, X: pd.DataFrame) -> list[str]:
+        """按因子类型分组统计。"""
+        lines = ["---", "", "## 4. Factor Group Breakdown (因子类型分组)", ""]
+
+        counts = {}
+        for col in X.columns:
+            cat = _classify_factor(col)
+            counts[cat] = counts.get(cat, 0) + 1
+
+        category_names = {
+            "momentum": "Momentum/Trend",
+            "volatility": "Volatility",
+            "volume_price": "Volume-Price",
+            "quantile": "Quantile/Extremes",
+            "extra": "Extra Features",
+            "other": "Other",
+        }
+
+        lines.append("| Category | Count | Factors |")
+        lines.append("|----------|-------|---------|")
+        for cat in ["momentum", "volatility", "volume_price", "quantile", "extra", "other"]:
+            if cat in counts:
+                cols = sorted([c for c in X.columns if _classify_factor(c) == cat])
+                lines.append(f"| {category_names[cat]} | {counts[cat]} | {', '.join(cols)} |")
+        lines.append("")
+        return lines
+
+    def _section_redundant_pairs(self, artifacts: dict) -> list[str]:
+        """高相关因子对（冗余）。"""
+        lines = ["---", "", "## 5. Highly Correlated Factor Pairs (高相关因子对)", ""]
+
+        pairs_key = "DeduplicateStep.redundant_pairs"
+        if pairs_key not in artifacts:
+            lines.append("*No redundancy analysis available.*")
+            lines.append("")
+            return lines
+
+        pairs_df = artifacts[pairs_key]
+        if pairs_df is None or len(pairs_df) == 0:
+            lines.append("*No highly correlated pairs found.*")
+            lines.append("")
+            return lines
+
+        top10 = pairs_df.nlargest(10, "corr")
+        lines.append("| Rank | Factor A | Factor B | |Correlation| |")
+        lines.append("|------|----------|----------|---------------|")
+        for rank, (_, row) in enumerate(top10.iterrows(), 1):
+            lines.append(f"| {rank} | {row['a']} | {row['b']} | {row['corr']:.4f} |")
+        lines.append("")
         return lines
 
     def _section_label_stats(self, all_labels: dict[str, pd.Series]) -> list[str]:
         """Label 统计。"""
-        lines = ["---", "", "## 3. Label Statistics (标签统计)", ""]
+        lines = ["---", "", "## 6. Label Statistics (标签统计)", ""]
 
         lines.append("| Label | Count | Mean | Std | Min | P25 | Median | P75 | Max |")
         lines.append("|-------|-------|------|-----|-----|-----|--------|-----|-----|")
@@ -134,9 +234,8 @@ class FactorQualityReporter:
         self, X: pd.DataFrame, y: pd.Series
     ) -> list[str]:
         """因子-label 相关性 (top 20)。"""
-        lines = ["---", "", "## 4. Top Factor-Label Correlations (因子-label 相关性 Top 20)", ""]
+        lines = ["---", "", "## 7. Top Factor-Label Correlations (因子-label 相关性 Top 20)", ""]
 
-        # Compute Spearman correlation per factor
         corrs = {}
         for col in X.columns:
             valid = pd.concat([X[col], y], axis=1).dropna()
@@ -148,7 +247,7 @@ class FactorQualityReporter:
             top20 = corr_series.abs().nlargest(20)
             lines.append("| Rank | Factor | Correlation |")
             lines.append("|------|--------|-------------|")
-            for rank, (factor, abs_corr) in enumerate(top20.items(), 1):
+            for rank, factor in enumerate(top20.index, 1):
                 actual_corr = corr_series[factor]
                 lines.append(f"| {rank} | {factor} | {actual_corr:.4f} |")
             lines.append("")

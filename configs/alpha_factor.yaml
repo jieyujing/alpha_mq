@@ -31,6 +31,8 @@ labels:
   periods: [1, 5, 10, 20]
 
 filter:
+  drop_leakage:
+    prefixes: ["LABEL"]
   drop_missing_label: {}
   drop_high_missing:
     threshold: 0.3
@@ -40,10 +42,15 @@ filter:
     variance_threshold: 1.0e-8
     unique_ratio_threshold: 0.01
   factor_quality:
+    mode: "relaxed"
     min_abs_ic_mean: 0.005
     min_abs_icir: 0.1
     min_abs_monotonicity: 0.05
     max_sign_flip_ratio: 0.45
+  deduplicate:
+    corr_threshold: 0.8
+    corr_method: "spearman"
+    keep_by: "ic_mean"
 
 output:
   parquet: data/factor_pool.parquet

@@ -248,6 +248,28 @@ class DropUntradableSampleStep(BaseFilterStep):
 
 
 # =========================================================
+# Step 2b: 删除疑似泄漏因子（如 LABEL* 列）
+# =========================================================
+
+class DropLeakageStep(BaseFilterStep):
+    """删除列名前缀匹配指定模式的因子，防止标签泄漏。"""
+    def __init__(
+        self,
+        prefixes: Sequence[str] = ("LABEL",),
+        name: Optional[str] = None
+    ):
+        super().__init__(name)
+        self.prefixes = prefixes
+
+    def process(self, ctx: FilterContext) -> FilterContext:
+        to_drop = [
+            col for col in ctx.X.columns
+            if any(col.startswith(p) for p in self.prefixes)
+        ]
+        return _drop_features(ctx, self.name, to_drop, f"prefix match {self.prefixes}")
+
+
+# =========================================================
 # Step 3: 删除缺失率 > threshold 的特征
 # =========================================================
 
@@ -350,6 +372,13 @@ class LeakageAuditStep(BaseFilterStep):
 # =========================================================
 
 class FactorQualityFilterStep(BaseFilterStep):
+    """
+    因子质量过滤：支持两种模式。
+
+    strict:  AND 逻辑，四项全部达标（原始行为）
+    relaxed: 投票制，至少 3/4 项达标
+    """
+
     def __init__(
         self,
         min_abs_ic_mean: float = 0.005,
@@ -357,6 +386,7 @@ class FactorQualityFilterStep(BaseFilterStep):
         min_abs_monotonicity: float = 0.05,
         max_sign_flip_ratio: float = 0.45,
         min_obs_per_date: int = 5,
+        mode: str = "relaxed",
         name: Optional[str] = None
     ):
         super().__init__(name)
@@ -365,6 +395,7 @@ class FactorQualityFilterStep(BaseFilterStep):
         self.min_abs_monotonicity = min_abs_monotonicity
         self.max_sign_flip_ratio = max_sign_flip_ratio
         self.min_obs_per_date = min_obs_per_date
+        self.mode = mode
 
     def process(self, ctx: FilterContext) -> FilterContext:
         if not isinstance(ctx.X.index, pd.MultiIndex):
@@ -401,12 +432,27 @@ class FactorQualityFilterStep(BaseFilterStep):
 
         ctx.artifacts[f"{self.name}.factor_stats"] = stats.sort_values("ic_mean")
 
-        bad_mask = (
-            (stats["ic_mean"].abs() < self.min_abs_ic_mean)
-            | (stats["icir"].abs() < self.min_abs_icir)
-            | (stats["monotonicity"].abs() < self.min_abs_monotonicity)
-            | (stats["sign_flip_ratio"] > self.max_sign_flip_ratio)
-        )
+        # 四项指标各自的达标情况
+        ic_ok = stats["ic_mean"].abs() >= self.min_abs_ic_mean
+        icir_ok = stats["icir"].abs() >= self.min_abs_icir
+        mono_ok = stats["monotonicity"].abs() >= self.min_abs_monotonicity
+        flip_ok = stats["sign_flip_ratio"] <= self.max_sign_flip_ratio
+
+        if self.mode == "strict":
+            # 原始 AND 逻辑
+            bad_mask = ~(ic_ok & icir_ok & mono_ok & flip_ok)
+        else:
+            # relaxed 投票制：>= 3/4 项达标即保留
+            votes = ic_ok.astype(int) + icir_ok.astype(int) + mono_ok.astype(int) + flip_ok.astype(int)
+            stats["votes"] = votes
+            bad_mask = votes < 3
+
+            # 辅助诊断：记录被保留因子各项的达标情况
+            passed = stats[~bad_mask.fillna(True)]
+            ctx.log(
+                f"[{self.name} relaxed] kept {len(passed)} factors: "
+                f"{passed.get('votes', pd.Series()).value_counts().to_dict()}"
+            )
 
         to_drop = stats.index[bad_mask.fillna(True)].tolist()
 
@@ -415,10 +461,79 @@ class FactorQualityFilterStep(BaseFilterStep):
             self.name,
             to_drop,
             (
+                f"mode={self.mode}, "
                 f"|ic_mean| < {self.min_abs_ic_mean} or "
                 f"|icir| < {self.min_abs_icir} or "
                 f"|monotonicity| < {self.min_abs_monotonicity} or "
                 f"sign_flip_ratio > {self.max_sign_flip_ratio}"
             ),
         )
+
+
+# =========================================================
+# Step 9: 因子间去相关冗余过滤
+# =========================================================
+
+class DeduplicateStep(BaseFilterStep):
+    """
+    对高相关因子对进行去重：保留 IC 更高的一方，删除另一方。
+    """
+    def __init__(
+        self,
+        corr_threshold: float = 0.8,
+        corr_method: str = "spearman",
+        keep_by: str = "ic_mean",
+        name: Optional[str] = None
+    ):
+        super().__init__(name)
+        self.corr_threshold = corr_threshold
+        self.corr_method = corr_method
+        self.keep_by = keep_by
+
+    def process(self, ctx: FilterContext) -> FilterContext:
+        if len(ctx.X.columns) < 2:
+            return ctx
+
+        corr_matrix = ctx.X.corr(method=self.corr_method)
+
+        features = list(ctx.X.columns)
+        high_corr_pairs = []
+        for i in range(len(features)):
+            for j in range(i + 1, len(features)):
+                abs_corr = abs(corr_matrix.loc[features[i], features[j]])
+                if abs_corr > self.corr_threshold:
+                    high_corr_pairs.append((features[i], features[j], abs_corr))
+
+        if not high_corr_pairs:
+            ctx.artifacts[f"{self.name}.redundant_pairs"] = pd.DataFrame(columns=["a", "b", "corr"])
+            return ctx
+
+        ic_stats = None
+        stats_key = "FactorQualityFilterStep.factor_stats"
+        if stats_key in ctx.artifacts:
+            ic_stats = ctx.artifacts[stats_key]
+
+        def get_ic_score(col: str) -> float:
+            if ic_stats is not None and self.keep_by in ic_stats.columns:
+                val = ic_stats.loc[col, self.keep_by]
+                return abs(val) if not np.isnan(val) else 0.0
+            return 0.0
+
+        high_corr_pairs.sort(key=lambda x: x[2], reverse=True)
+        removed = set()
+
+        for a, b, corr_val in high_corr_pairs:
+            if a in removed or b in removed:
+                continue
+            score_a = get_ic_score(a)
+            score_b = get_ic_score(b)
+            if score_a >= score_b:
+                removed.add(b)
+            else:
+                removed.add(a)
+
+        pairs_df = pd.DataFrame(high_corr_pairs, columns=["a", "b", "corr"])
+        ctx.artifacts[f"{self.name}.redundant_pairs"] = pairs_df
+
+        return _drop_features(ctx, self.name, sorted(removed), f"corr > {self.corr_threshold}")
 
