@@ -45,7 +45,7 @@ def main():
 
     DEFAULT_STAGES = {
         "csi1000_qlib": ["download", "validate", "clean", "ingest"],
-        "alpha_factor": ["ingest_bin", "factor_compute", "label_compute", "filter", "export", "report"],
+        "factor_filter": ["merge_gm_data", "ingest_bin", "factor_compute", "data_quality_check", "label_compute", "filter", "export", "report"],
     }
 
     if args.config:

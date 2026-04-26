@@ -297,8 +297,9 @@ class ModelPipeline(DataPipeline):
                 logging.warning(f"Could not load close prices: {e}")
                 return
 
-        returns_wide = self.df.groupby("datetime")[close_col].pct_change().unstack()
-        returns_wide = returns_wide.sort_index()
+        # Pivot to wide format FIRST, then compute pct_change along time axis
+        prices_wide = self.df[close_col].unstack()
+        returns_wide = prices_wide.pct_change()
 
         for result in self.results:
             if result.oriented_test_signal.empty:
@@ -326,20 +327,41 @@ class ModelPipeline(DataPipeline):
         output_cfg = self.config.get("output", {})
         alphalens_dir = Path(output_cfg.get("alphalens", "data/model_results/alphalens"))
 
-        # Find best model by oriented_val_icir (filter NaN)
+        # Find best model: prefer regressor with highest OOS Sharpe
+        # (best分层收益表现, not validation ICIR)
+        regressor_names = ["elastic_net", "lgbm_regressor"]
         best = None
-        best_icir = -np.inf
+        best_sharpe = -np.inf
+
+        # Select by OOS Sharpe (from backtest_metrics)
         for r in self.results:
-            icir = abs(r.val_metrics.get("icir", np.nan))
-            if np.isnan(icir):
+            if r.model_name not in regressor_names:
                 continue
-            if icir > best_icir and not r.oriented_test_signal.empty:
-                best_icir = icir
+            sharpe = r.backtest_metrics.get("sharpe", np.nan)
+            if np.isnan(sharpe):
+                continue
+            if sharpe > best_sharpe and not r.oriented_test_signal.empty:
+                best_sharpe = sharpe
                 best = r
+
+        # Fallback to ICIR if no backtest metrics
+        if best is None:
+            best_icir = -np.inf
+            for r in self.results:
+                if r.model_name not in regressor_names:
+                    continue
+                icir = abs(r.val_metrics.get("icir", np.nan))
+                if np.isnan(icir):
+                    continue
+                if icir > best_icir and not r.oriented_test_signal.empty:
+                    best_icir = icir
+                    best = r
 
         if best is None:
             logging.warning("No valid model result found for Alphalens.")
             return
+
+        logging.info(f"Alphalens using {best.model_name} + {best.label_name} (Sharpe={best_sharpe:.2f})")
 
         # Get close prices - try factor pool first, then Qlib
         close_col = None

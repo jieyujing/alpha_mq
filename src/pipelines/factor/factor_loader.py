@@ -21,11 +21,16 @@ class FactorLoader:
         start: str,
         end: str,
         extra_fields: Optional[List[str]] = None,
+        drop_labels: bool = True,
     ) -> pd.DataFrame:
         """
         qlib.init() → Alpha158 handler → fetch DataFrame.
 
         如果指定 extra_fields，额外加载这些字段并合并到结果中。
+
+        Args:
+            drop_labels: 是否删除 Alpha158 内置的 LABEL 列（防止数据泄露）。
+                         LABEL0 是当日收益率，不应作为预测特征。
         """
         qlib.init(provider_uri=self.provider_uri)
 
@@ -35,6 +40,14 @@ class FactorLoader:
             end_time=end,
         )
         df = handler.fetch()
+
+        # 删除 qlib 内置的 LABEL 列（防止数据泄露）
+        if drop_labels:
+            label_cols = [c for c in df.columns if self._is_label_column(c)]
+            if label_cols:
+                df = df.drop(columns=label_cols)
+                logging.info(f"Dropped {len(label_cols)} LABEL columns to prevent data leakage")
+
         logging.info(f"Loaded Alpha158 factors: {df.shape[1]} features, {len(df)} rows")
 
         # 加载额外特征
@@ -67,3 +80,13 @@ class FactorLoader:
             logging.info(f"Added {len(extra_fields)} extra fields. Total features: {df.shape[1]}")
 
         return df
+
+    @staticmethod
+    def _is_label_column(column) -> bool:
+        """识别 Qlib flat columns 与 MultiIndex columns 中的标签列。"""
+        if isinstance(column, tuple):
+            parts = [str(part) for part in column if part is not None]
+            return any(part.startswith("LABEL") for part in parts) or any(
+                part.lower() == "label" for part in parts
+            )
+        return str(column).startswith("LABEL")

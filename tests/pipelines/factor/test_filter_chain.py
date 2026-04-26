@@ -301,7 +301,7 @@ def test_chain_artifacts_populated():
 def test_chain_redundant_pairs_recorded():
     """DeduplicateStep 应记录冗余因子对。"""
     np.random.seed(42)
-    dates = pd.date_range("2020-01-01", periods=100, freq="B")
+    dates = pd.date_range("2020-01-01", periods=200, freq="B")
     symbols = ["SH6001", "SH6002"]
     index = pd.MultiIndex.from_product([dates, symbols], names=["datetime", "instrument"])
     n = len(index)
@@ -312,12 +312,13 @@ def test_chain_redundant_pairs_recorded():
         "REDUNDANT_B": base + np.random.randn(n) * 0.0001,  # 几乎完全相同
         "UNIQUE": np.random.randn(n),
     }, index=index)
-    y = pd.Series(np.random.randn(n), index=index)
+    # y 与 REDUNDANT_A 有关系，确保 IC 计算
+    y = pd.Series(base + np.random.randn(n) * 0.3, index=index)
     ctx = FilterContext(X=X, y=y)
 
+    # 跳过 FactorQualityFilterStep，直接测试 DeduplicateStep
     config = {
         "drop_missing_label": {},
-        "factor_quality": {"min_abs_ic_mean": 0.0, "min_abs_icir": 0.0, "min_abs_monotonicity": 0.0, "max_sign_flip_ratio": 1.0},
         "deduplicate": {"corr_threshold": 0.8},
     }
     chain = _build_full_chain(config)

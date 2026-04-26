@@ -44,6 +44,33 @@ def test_load_alpha158_returns_dataframe(loader):
     mock_qlib.init.assert_called_once()
 
 
+def test_load_alpha158_drops_multiindex_label_columns(loader):
+    """Alpha158 MultiIndex label columns should be removed without breaking."""
+    idx = make_mock_index()
+    columns = pd.MultiIndex.from_tuples([
+        ("feature", "KMID"),
+        ("feature", "KLEN"),
+        ("label", "LABEL0"),
+    ])
+    mock_data = pd.DataFrame(np.random.randn(len(idx), len(columns)), index=idx, columns=columns)
+
+    mock_handler = MagicMock()
+    mock_handler.fetch.return_value = mock_data
+
+    with patch("pipelines.factor.factor_loader.qlib") as mock_qlib:
+        with patch("pipelines.factor.factor_loader.Alpha158", return_value=mock_handler):
+            df = loader.load_alpha158(
+                instruments="csi1000",
+                start="2020-01-01",
+                end="2020-12-31",
+            )
+
+    assert ("feature", "KMID") in df.columns
+    assert ("feature", "KLEN") in df.columns
+    assert ("label", "LABEL0") not in df.columns
+    mock_qlib.init.assert_called_once()
+
+
 def test_load_with_extra_fields(loader):
     """Extra fields should be appended to Alpha158 factors."""
     idx = make_mock_index()

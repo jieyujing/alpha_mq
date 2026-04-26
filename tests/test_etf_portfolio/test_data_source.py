@@ -2,6 +2,9 @@
 import pytest
 from src.etf_portfolio.data_source import GMDataSource, DataSource
 
+# 检查 gm 模块是否可用
+pytest.importorskip("gm", reason="gm SDK not installed, skipping GMDataSource tests")
+
 
 class MockRateLimiter:
     """测试用模拟流控器"""
