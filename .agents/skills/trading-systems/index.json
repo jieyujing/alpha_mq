@@ -1,0 +1,259 @@
+{
+  "name": "Trading Systems SKILL Index",
+  "version": "1.0",
+  "source": "Trading Systems by Emilio Tomasini & Urban Jaekle (2009)",
+  "entries": [
+    {
+      "term": "trading system",
+      "type": "concept",
+      "definition": "A precise set of rules that automatically defines entry and exit on markets without human discretionary intervention",
+      "pages": [1],
+      "file": "references/system_development.md"
+    },
+    {
+      "term": "trading strategy",
+      "type": "concept",
+      "definition": "A trading system with added money management and portfolio rules",
+      "pages": [1],
+      "file": "references/system_development.md"
+    },
+    {
+      "term": "money management",
+      "type": "concept",
+      "definition": "Position sizing - how much to invest on a particular trade",
+      "pages": [1, 7],
+      "file": "references/position_sizing.md"
+    },
+    {
+      "term": "risk management",
+      "type": "concept",
+      "definition": "Where to place initial stop loss or target price",
+      "pages": [1, 7],
+      "file": "references/risk_management.md"
+    },
+    {
+      "term": "trend following",
+      "type": "strategy",
+      "definition": "Strategy that enters when market forms clear trend and exits when trend reverses",
+      "pages": [1, 2],
+      "file": "references/trend_following.md"
+    },
+    {
+      "term": "mean reversion",
+      "type": "strategy",
+      "definition": "Strategy based on assumption that price will revert to mean after deviation",
+      "pages": ["Appendix 1", "Appendix 2"],
+      "file": "references/mean_reversion.md"
+    },
+    {
+      "term": "channel breakout",
+      "type": "strategy",
+      "definition": "Buy at highest high in last N days, sell short at lowest low in last N days",
+      "pages": [1],
+      "file": "references/trend_following.md"
+    },
+    {
+      "term": "moving average crossover",
+      "type": "indicator",
+      "definition": "Short-term MA crossing above/below long-term MA generates buy/sell signals",
+      "pages": [2, 3],
+      "file": "references/trend_following.md"
+    },
+    {
+      "term": "LUXOR system",
+      "type": "system",
+      "definition": "Complete trend following system developed as case study in Part II",
+      "pages": [2, 3, 4, 5, 6, 7],
+      "file": "references/trend_following.md"
+    },
+    {
+      "term": "Bollinger Band system",
+      "type": "system",
+      "definition": "Mean reversion system using Bollinger Bands for entry signals",
+      "pages": ["Appendix 1"],
+      "file": "references/mean_reversion.md"
+    },
+    {
+      "term": "Triangle system",
+      "type": "system",
+      "definition": "Pattern recognition system based on triangle formation",
+      "pages": ["Appendix 2"],
+      "file": "references/mean_reversion.md"
+    },
+    {
+      "term": "walk forward analysis",
+      "type": "method",
+      "definition": "Rolling window optimization with out-of-sample testing to verify robustness",
+      "pages": [2, 6],
+      "file": "references/system_development.md"
+    },
+    {
+      "term": "optimisation",
+      "type": "method",
+      "definition": "Finding best parameter values for a trading system",
+      "pages": [2, 5],
+      "file": "references/system_development.md"
+    },
+    {
+      "term": "stability diagram",
+      "type": "method",
+      "definition": "Visual representation of system performance across parameter space",
+      "pages": [2],
+      "file": "references/system_development.md"
+    },
+    {
+      "term": "fixed fractional money management",
+      "type": "method",
+      "definition": "Risk fixed percentage of account equity on each trade",
+      "pages": [7],
+      "file": "references/position_sizing.md"
+    },
+    {
+      "term": "fixed ratio money management",
+      "type": "method",
+      "definition": "Increase position size based on accumulated profits with delta parameter",
+      "pages": [7],
+      "file": "references/position_sizing.md"
+    },
+    {
+      "term": "maximum drawdown money management",
+      "type": "method",
+      "definition": "Adjust position size based on historical maximum drawdown",
+      "pages": [7],
+      "file": "references/position_sizing.md"
+    },
+    {
+      "term": "Monte Carlo analysis",
+      "type": "method",
+      "definition": "Random sampling of trades to assess risk and robustness",
+      "pages": [7],
+      "file": "references/position_sizing.md"
+    },
+    {
+      "term": "RINA Index",
+      "type": "metric",
+      "definition": "Composite metric combining net profit, max drawdown, and time efficiency",
+      "pages": [2],
+      "file": "references/risk_management.md"
+    },
+    {
+      "term": "profit factor",
+      "type": "metric",
+      "definition": "Gross profit divided by gross loss",
+      "pages": [2],
+      "file": "references/risk_management.md"
+    },
+    {
+      "term": "average trade",
+      "type": "metric",
+      "definition": "Net profit divided by number of trades",
+      "pages": [2],
+      "file": "references/risk_management.md"
+    },
+    {
+      "term": "drawdown",
+      "type": "metric",
+      "definition": "Peak to trough decline in equity curve",
+      "pages": [2, 3],
+      "file": "references/risk_management.md"
+    },
+    {
+      "term": "portfolio construction",
+      "type": "concept",
+      "definition": "Combining multiple systems and markets for diversification",
+      "pages": [3],
+      "file": "references/portfolio_construction.md"
+    },
+    {
+      "term": "equity line crossover",
+      "type": "method",
+      "definition": "Using moving average on equity curve to activate/deactivate systems",
+      "pages": [3],
+      "file": "references/portfolio_construction.md"
+    },
+    {
+      "term": "correlation",
+      "type": "concept",
+      "definition": "Statistical relationship between equity lines of different systems",
+      "pages": [3],
+      "file": "references/portfolio_construction.md"
+    },
+    {
+      "term": "ATR",
+      "type": "indicator",
+      "definition": "Average True Range - volatility indicator used for stop loss calculation",
+      "pages": [1, 2],
+      "file": "references/trend_following.md"
+    },
+    {
+      "term": "stop loss",
+      "type": "concept",
+      "definition": "Predefined exit point to limit losses on a trade",
+      "pages": [1, 2],
+      "file": "references/risk_management.md"
+    },
+    {
+      "term": "trailing stop",
+      "type": "concept",
+      "definition": "Stop loss that moves in favor of the trade to protect profits",
+      "pages": [1],
+      "file": "references/risk_management.md"
+    },
+    {
+      "term": "degrees of freedom",
+      "type": "concept",
+      "definition": "Number of optimizable parameters in a trading system",
+      "pages": [2, 5],
+      "file": "references/system_development.md"
+    },
+    {
+      "term": "curve fitting",
+      "type": "concept",
+      "definition": "Over-optimization that reduces out-of-sample predictive power",
+      "pages": [2, 5],
+      "file": "references/system_development.md"
+    },
+    {
+      "term": "sample size",
+      "type": "concept",
+      "definition": "Number of trades or data points used for testing",
+      "pages": [6],
+      "file": "references/system_development.md"
+    },
+    {
+      "term": "in-sample",
+      "type": "concept",
+      "definition": "Data used for optimization",
+      "pages": [6],
+      "file": "references/system_development.md"
+    },
+    {
+      "term": "out-of-sample",
+      "type": "concept",
+      "definition": "Data not used in optimization, for validation",
+      "pages": [6],
+      "file": "references/system_development.md"
+    },
+    {
+      "term": "EasyLanguage",
+      "type": "tool",
+      "definition": "Programming language for TradeStation platform",
+      "pages": [2],
+      "file": "references/system_development.md"
+    },
+    {
+      "term": "TradeStation",
+      "type": "tool",
+      "definition": "Trading platform used for charts and examples in this book",
+      "pages": ["Acknowledgments"],
+      "file": "references/system_development.md"
+    }
+  ],
+  "categories": {
+    "strategies": ["trend_following", "mean_reversion", "arbitrage", "event_driven"],
+    "methods": ["walk_forward_analysis", "optimisation", "monte_carlo", "equity_line_crossover"],
+    "metrics": ["RINA_Index", "profit_factor", "average_trade", "drawdown", "sharpe_ratio"],
+    "concepts": ["money_management", "risk_management", "portfolio_construction", "position_sizing"],
+    "systems": ["LUXOR", "Bollinger_Band", "Triangle"]
+  }
+}

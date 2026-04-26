@@ -1,0 +1,4 @@
+interface:
+  display_name: "Design Pattern Advisor"
+  short_description: "帮助开发时识别变化点并选择合适设计模式的高效实用技能"
+  default_prompt: "Use $design-pattern-advisor to assess whether this code or design change needs a design pattern and recommend the lightest Python-idiomatic option."
