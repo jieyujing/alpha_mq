@@ -36,20 +36,20 @@ class CSI1000Downloader(GMDownloader):
         "valuation": {
             "func_name": "stk_get_daily_valuation",
             "format": "csv",
-            "time_col": "bob",
+            "time_col": "trade_date",
             "fields": "pe_ttm,pb_mrq,ps_ttm,pcf_ttm_oper",
         },
         "mktvalue": {
             "func_name": "stk_get_daily_mktvalue",
             "format": "csv",
-            "time_col": "bob",
+            "time_col": "trade_date",
             "fields": "tot_mv,a_mv",
         },
         "basic": {
             "func_name": "stk_get_daily_basic",
             "format": "csv",
-            "time_col": "bob",
-            "fields": "tclose,turnrate,ttl_shr,circ_shr,is_st,is_suspended",
+            "time_col": "trade_date",
+            "fields": "tclose,turnrate,ttl_shr,circ_shr",
         },
     }
 

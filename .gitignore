@@ -61,6 +61,7 @@ venv.bak/
 data/exports/
 *.log
 *.csv
+*.bin
 
 # MyQuant / GM SDK
 # 忽略 SDK 可能产生的本地缓存或日志

@@ -165,8 +165,8 @@ class CSI1000QlibPipeline(DataPipeline):
         else:
             logging.error("dump_pit failed")
 
-    def teardown(self):
-        """清理资源并生成质量报告"""
+    def on_success(self):
+        """Pipeline 成功完成后生成质量报告"""
         import sys
         from pathlib import Path
 
@@ -179,4 +179,4 @@ class CSI1000QlibPipeline(DataPipeline):
 
         reporter = QualityReporter(self.config)
         report_path = reporter.save_report()
-        logging.info(f"Pipeline teardown complete. Report: {report_path}")
+        logging.info(f"Pipeline completed successfully. Quality report: {report_path}")

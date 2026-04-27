@@ -1,33 +1,44 @@
 factor_pool:
   total_factors_before: 166
-  total_factors_after: 20
+  total_factors_after: 34
   total_rows: 4387
   primary_label: label_5d
   factor_names:
+  - CNTD20
+  - CNTD30
   - CNTD60
+  - CNTN20
+  - CNTN30
   - CNTN60
+  - CNTP20
   - CNTP30
+  - CNTP60
+  - CORR10
   - CORR20
-  - HIGH0
-  - KLEN
-  - KLOW
+  - CORR30
+  - CORR5
+  - CORR60
   - KUP2
-  - MAX10
-  - MIN60
+  - LABEL0
+  - MA10
+  - MIN10
+  - MIN5
   - QTLU10
-  - RESI10
+  - RESI20
   - RESI30
+  - RESI60
   - RSQR10
-  - RSV20
+  - RSQR20
+  - RSQR30
+  - RSQR5
+  - RSQR60
   - STD10
-  - VMA20
-  - VSTD10
-  - VSUMP5
-  - turnrate
+  - STD20
+  - SUMD20
+  - SUMN20
+  - SUMP20
+  - VMA5
 filter_config:
-  drop_leakage:
-    prefixes:
-    - LABEL
   drop_missing_label: {}
   drop_high_missing:
     threshold: 0.3
@@ -37,20 +48,15 @@ filter_config:
     variance_threshold: 1.0e-08
     unique_ratio_threshold: 0.01
   factor_quality:
-    mode: relaxed
     min_abs_ic_mean: 0.005
     min_abs_icir: 0.1
     min_abs_monotonicity: 0.05
     max_sign_flip_ratio: 0.45
-  deduplicate:
-    corr_threshold: 0.8
-    corr_method: spearman
-    keep_by: ic_mean
 data_config:
   qlib_csv: data/qlib_output/ohlcv
   qlib_bin: data/qlib_bin
   instruments: csi1000
-  start_date: '2020-01-01'
+  start_date: '2025-01-01'
   end_date: null
   extra_fields:
   - pe_ttm

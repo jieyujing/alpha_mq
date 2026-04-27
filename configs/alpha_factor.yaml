@@ -15,7 +15,7 @@ data:
   qlib_csv: data/qlib_output/ohlcv
   qlib_bin: data/qlib_bin
   instruments: "csi1000"
-  start_date: "2020-01-01"
+  start_date: "2025-01-01"
   end_date: null
   extra_fields:
     - pe_ttm

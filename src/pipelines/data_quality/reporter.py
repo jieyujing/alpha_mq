@@ -128,12 +128,53 @@ class QualityReporter:
 
     def run_all_checks(self) -> dict:
         """执行所有检查"""
-        return {
+        results = {
             "ohlcv": self._check_ohlcv(),
             "features": self._check_features(),
             "pit": self._check_pit(),
             "summary": self._generate_summary(),
         }
+
+        # 计算整体评分
+        results["summary"]["score"] = self._calculate_score(results)
+
+        return results
+
+    def _calculate_score(self, results: dict) -> int:
+        """计算整体数据质量评分 (0-100)
+
+        评分维度：
+        - OHLCV 标的覆盖率：40%
+        - Features 平均覆盖率：30%
+        - PIT 标的覆盖率：20%
+        - 数据质量（缺失值）：10%
+        """
+        # 1. OHLCV 覆盖率 (预期 1000 个标的)
+        ohlcv_count = results["ohlcv"]["symbol_count"]
+        ohlcv_score = min(ohlcv_count / 1000 * 100, 100)
+
+        # 2. Features 平均覆盖率
+        features = results["features"]
+        feature_scores = [data["coverage"] for data in features.values()]
+        avg_feature_score = sum(feature_scores) / len(feature_scores) if feature_scores else 0
+
+        # 3. PIT 覆盖率
+        pit_count = results["pit"]["symbol_count"]
+        pit_score = min(pit_count / 1000 * 100, 100)
+
+        # 4. 数据质量（缺失值占比越低越好）
+        missing_pct = results["ohlcv"]["missing_pct"]
+        quality_score = 100 - missing_pct
+
+        # 综合评分
+        total_score = (
+            ohlcv_score * 0.4 +
+            avg_feature_score * 0.3 +
+            pit_score * 0.2 +
+            quality_score * 0.1
+        )
+
+        return round(total_score)
 
     def generate_markdown(self, results: dict) -> str:
         """生成 Markdown 报告"""

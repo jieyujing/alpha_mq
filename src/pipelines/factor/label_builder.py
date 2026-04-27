@@ -52,9 +52,11 @@ class LabelBuilder:
                               start_time=start, end_time=extended_end,
                               freq="day")
         close_df.columns = ["close"]
-        # D.features returns index ['instrument', 'datetime'], swap to ['datetime', 'instrument']
+        
+        # 对齐索引：D.features 返回 (instrument, datetime)，转换为 (datetime, instrument)
         if close_df.index.names == ["instrument", "datetime"]:
             close_df = close_df.swaplevel("instrument", "datetime").sort_index()
             close_df.index.names = ["datetime", "instrument"]
+            
         logging.info(f"Loaded close prices: {len(close_df)} rows, range {start} to {extended_end}")
         return close_df

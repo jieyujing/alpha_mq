@@ -78,10 +78,10 @@ data/backend/
 
 ```bash
 # 完整 pipeline
-uv run python data/scripts/run_pipeline.py --config configs/pipelines/csi1000_qlib.yaml
+uv run python scripts/run_pipeline.py --config configs/pipelines/csi1000_qlib.yaml
 
 # 只执行部分 stage
-uv run python data/scripts/run_pipeline.py \
+uv run python scripts/run_pipeline.py \
   --config configs/pipelines/csi1000_qlib.yaml \
   --stages validate ingest
 ```
@@ -122,12 +122,12 @@ src/
     └── ml/                     # 子包（占位）：模型训练 pipeline
         └── __init__.py
 
-data/scripts/
+scripts/
 ├── download_gm.py          # (已有，保留，向后兼容)
 ├── clean_basic_l1.py       # (已有，保留，向后兼容，逻辑迁移进 pipeline)
 ├── tradability_l2.py       # (已有，保留，向后兼容)
 ├── universe_l3.py          # (已有，保留，向后兼容)
-└── run_pipeline.py         # (新增) 配置驱动的 CLI 入口
+└── run_pipeline.py         # (新增) 核心入口：加载 YAML，映射 Pipeline 类并运行
 
 configs/pipelines/
 ├── csi1000_qlib.yaml       # (新增) 数据接入 pipeline 配置
@@ -449,15 +449,74 @@ python scripts/dump_pit.py dump_update \
 | 7 | `DataValidator` + 测试 | `src/pipelines/validator.py` | 无 |
 | 8 | 迁移 L1/L2/L3 为纯函数 | `src/pipelines/clean_functions.py` | 无 |
 | 9 | `CSI1000QlibPipeline` 具体实现 | `src/pipelines/data_ingest/csi1000_qlib.py` | 2, 6, 7, 8 |
-| 10 | YAML 配置文件 + `run_pipeline.py` CLI | `configs/pipelines/`, `data/scripts/run_pipeline.py` | 9 |
+| 10 | YAML 配置文件 + `run_pipeline.py` CLI | `configs/pipelines/`, `scripts/run_pipeline.py` | 9 |
 | 11 | 集成测试（dry-run，mock GM API） | `tests/pipelines/` | 10 |
 
 ---
 
-## 9. 关键约束
+## 10. 配置驱动与执行逻辑
 
-1. **不破坏现有流程**：`clean_basic_l1.py`, `tradability_l2.py`, `universe_l3.py` 的 `__main__` 入口保留可独立运行
-2. **增量优先**：日常更新使用 `dump_update`，全量初始化使用 `dump_all`，通过 config `mode: incremental|full` 控制
-3. **财务字段自动发现**：`PitConverter` 从 Parquet 列名自动扫描可用字段，无需手动维护字段列表
-4. **中间文件可选清理**：`cleanup_intermediate: true` 时 ingest 完成后删除 `data/qlib_csv/`
-5. **pyqlib 已在依赖中**：`pyqlib >= 0.9.7` 已在 `pyproject.toml`，无需额外安装
+### 10.1 配置加载流程
+
+`run_pipeline.py` 负责将 YAML 配置文件转化为具体的 Pipeline 实例。
+
+1.  **参数解析**: 解析 `--config` (路径) 和 `--stages` (可选覆盖)。
+2.  **YAML 加载**: 使用 `yaml.safe_load()` 读取配置。
+3.  **Pipeline 工厂**: 根据 `pipeline.name` 字段查找对应的 Pipeline 类。
+    *   方案 A (简单): 手动维护一个 `NAME_TO_CLASS` 映射。
+    *   方案 B (灵活): 动态 import (例如 `pipelines.data_ingest.csi1000_qlib.CSI1000QlibPipeline`)。
+4.  **初始化与执行**: 实例化 `Pipeline(config)` 并调用 `.run()`。
+
+### 10.2 Pipeline 注册机制
+
+为了保持解耦，建议在 `src/pipelines/__init__.py` 中统一暴露或注册 Pipeline 类：
+
+```python
+# src/pipelines/__init__.py
+from .data_ingest.csi1000_qlib import CSI1000QlibPipeline
+
+PIPELINE_REGISTRY = {
+    "CSI1000QlibPipeline": CSI1000QlibPipeline,
+}
+```
+
+### 10.3 CLI 入口实现伪代码
+
+```python
+# scripts/run_pipeline.py
+import yaml
+import argparse
+from pipelines import PIPELINE_REGISTRY
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config", required=True, help="Path to YAML config")
+    parser.add_argument("--stages", nargs="+", help="Override stages in config")
+    args = parser.parse_args()
+
+    with open(args.config, "r") as f:
+        config = yaml.safe_load(f)
+
+    # 覆盖 stages (如果提供了命令行参数)
+    if args.stages:
+        config["pipeline"]["stages"] = args.stages
+
+    # 实例化并运行
+    pipeline_cls = PIPELINE_REGISTRY[config["pipeline"]["name"]]
+    pipeline = pipeline_cls(config)
+    pipeline.run()
+
+if __name__ == "__main__":
+    main()
+```
+
+---
+
+## 11. 关键约束
+
+1. **配置即文档**：YAML 文件应包含运行该 pipeline 所需的所有超参数和路径，避免在代码中硬编码。
+2. **不破坏现有流程**：`clean_basic_l1.py`, `tradability_l2.py`, `universe_l3.py` 的 `__main__` 入口保留可独立运行。
+3. **增量优先**：日常更新使用 `dump_update`，全量初始化使用 `dump_all`，通过 config `mode: incremental|full` 控制。
+4. **财务字段自动发现**：`PitConverter` 从 Parquet 列名自动扫描可用字段，无需手动维护字段列表。
+5. **中间文件可选清理**：`cleanup_intermediate: true` 时 ingest 完成后删除 `data/qlib_csv/`。
+6. **pyqlib 已在依赖中**：`pyqlib >= 0.9.7` 已在 `pyproject.toml`，无需额外安装。

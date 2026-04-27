@@ -23,6 +23,9 @@ def check_ohlcv_coverage(data_dir: Path) -> dict:
     if not files:
         return {"symbol_count": 0, "min_date": None, "max_date": None}
 
+    # 去重：同一标的可能有 csv + parquet 两个文件
+    symbols = {Path(f).stem for f in files}
+
     min_dates = []
     max_dates = []
 
@@ -46,7 +49,7 @@ def check_ohlcv_coverage(data_dir: Path) -> dict:
             continue
 
     return {
-        "symbol_count": len(files),
+        "symbol_count": len(symbols),
         "min_date": min(min_dates) if min_dates else None,
         "max_date": max(max_dates) if max_dates else None,
     }
