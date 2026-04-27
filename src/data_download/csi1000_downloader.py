@@ -57,7 +57,7 @@ class CSI1000Downloader(GMDownloader):
         super().__init__(config)
         self.index_code = config.get("index_code", "SHSE.000852")
         self.start_date = config.get("start_date", "2020-01-01")
-        self.end_date = config.get("end_date", datetime.now().strftime("%Y-%m-%d"))
+        self.end_date = config.get("end_date") or datetime.now().strftime("%Y-%m-%d")
         self.token = config.get("token")
 
         # 初始化 GM SDK

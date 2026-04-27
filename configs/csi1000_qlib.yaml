@@ -1,21 +1,20 @@
-# CSI 1000 Qlib 数据管道配置
+# CSI 1000 数据管道配置
 # 用法: uv run python scripts/run_pipeline.py --config configs/csi1000_qlib.yaml
 
 pipeline:
-  name: csi1000_qlib              # Pipeline 注册名 (必须是 PIPELINE_REGISTRY 中的名称)
+  name: csi1000_qlib
   stages:
     - download                    # 从 GM API 增量下载数据 (需 GM token)
     - validate                    # 验证数据完整性
-    - clean                       # 转换数据格式 (OHLCV + Features + PIT)
-    - ingest                      # 调用 Qlib dump_bin/dump_pit 入库
+    - clean                       # 数据清理 (CSV 格式无需额外转换)
+    - ingest                      # 合并所有数据为 Parquet 宽表
 
 # 下载配置
 token: null                       # GM token (建议从环境变量 GM_TOKEN 获取)
 index_code: "SHSE.000852"         # 指数代码
 start_date: "2020-01-01"          # 数据起始日期
-end_date: null                    # 数据结束日期 (默认 today)
+end_date: null                    # 数据结束日期 (null = today)
 
 # 数据目录配置
 exports_base: data/exports        # GM 下载数据存放目录 (history_1d, fundamentals_*, valuation 等)
-qlib_output: data/qlib_output     # Qlib CSV 中间输出目录 (ohlcv/, pit/)
-qlib_bin: data/qlib_bin           # Qlib 二进制数据最终目录 (供 Qlib init 加载)
+parquet_output: data/parquet      # Parquet 合并输出目录 (daily/, fundamentals/)

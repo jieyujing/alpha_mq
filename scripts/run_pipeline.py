@@ -31,8 +31,7 @@ def main():
     parser.add_argument("--pipeline", type=str, help="Pipeline name (if no config)")
     parser.add_argument("--stages", type=str, help="Comma-separated stages to run")
     parser.add_argument("--exports-base", type=str, default="data/exports", help="Exports directory")
-    parser.add_argument("--qlib-output", type=str, default="data/qlib_output", help="Qlib CSV output")
-    parser.add_argument("--qlib-bin", type=str, default="data/qlib_bin", help="Qlib binary output")
+    parser.add_argument("--parquet-output", type=str, default="data/parquet", help="Parquet output")
     parser.add_argument("-v", "--verbose", action="store_true", help="Verbose logging")
 
     args = parser.parse_args()
@@ -57,8 +56,7 @@ def main():
         config = {
             "pipeline": {"name": args.pipeline, "stages": stages},
             "exports_base": args.exports_base,
-            "qlib_output": args.qlib_output,
-            "qlib_bin": args.qlib_bin,
+            "parquet_output": args.parquet_output,
         }
         pipeline_name = args.pipeline
     else:

@@ -58,10 +58,7 @@ env.bak/
 venv.bak/
 
 # Data and Artifacts
-data/exports/
-*.log
-*.csv
-*.bin
+data/
 
 # MyQuant / GM SDK
 # 忽略 SDK 可能产生的本地缓存或日志
