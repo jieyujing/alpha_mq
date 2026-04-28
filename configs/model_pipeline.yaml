@@ -15,8 +15,7 @@ pipeline:
     - report
 
 data:
-  factor_pool: data/factor_pool_relaxed.parquet
-  qlib_bin: ../../data/qlib_bin
+  factor_pool: data/alpha158_pool.parquet
   instruments: "csi1000"
   datetime_col: "datetime"
   instrument_col: "instrument"
@@ -51,14 +50,17 @@ split:
   test_start: "2024-07-01"
   test_end: null
 
+rolling:
+  mode: "expanding"
+  step_months: 3
+  val_period_months: 3
+  embargo_days: 5
+
 model:
-  names: ["elastic_net", "lgbm_regressor", "lgbm_ranker", "lgbm_classifier"]
+  names: ["lgbm_regressor", "lgbm_ranker", "lgbm_classifier"]
   target_labels: ["label_1d", "label_5d", "label_10d", "label_20d"]
   primary_label: "label_5d"
   params:
-    elastic_net:
-      alpha: 0.01
-      l1_ratio: 0.2
     lgbm_regressor:
       num_leaves: 31
       learning_rate: 0.05

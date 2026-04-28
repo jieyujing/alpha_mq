@@ -13,7 +13,7 @@ from pipelines.base import DataPipeline
 from pipelines.data_ingest.parquet_ingestor import ParquetIngestor
 
 
-class CSI1000QlibPipeline(DataPipeline):
+class CSI1000DataPipeline(DataPipeline):
     """
     CSI 1000 指数成分股 Parquet 数据管道
 
@@ -91,9 +91,9 @@ class CSI1000QlibPipeline(DataPipeline):
         if not self.ohlcv_input.exists():
             errors.append(f"Missing OHLCV input: {self.ohlcv_input}")
         else:
-            csv_count = len(list(self.ohlcv_input.glob("*.csv")))
-            if csv_count == 0:
-                errors.append("No OHLCV CSV files found")
+            all_files = list(self.ohlcv_input.glob("*.csv")) + list(self.ohlcv_input.glob("*.parquet"))
+            if len(all_files) == 0:
+                errors.append("No OHLCV CSV or Parquet files found")
 
         fund_dirs = ["fundamentals_balance", "fundamentals_income", "fundamentals_cashflow"]
         for fd in fund_dirs:
@@ -121,8 +121,9 @@ class CSI1000QlibPipeline(DataPipeline):
         ingestor.setup()
 
         # 获取所有需要处理的标的
-        csv_files = list(self.ohlcv_input.glob("*.csv"))
-        symbols = [f.stem for f in csv_files if not f.stem.endswith("000852")]  # 排除指数
+        csv_files = list(self.ohlcv_input.glob("*.csv")) + list(self.ohlcv_input.glob("*.parquet"))
+        symbols = set(f.stem for f in csv_files if not f.stem.endswith("000852"))  # 排除指数
+        symbols = sorted(symbols)
         logging.info(f"Found {len(symbols)} stock symbols to process")
 
         stats = ingestor.process_all(symbols)

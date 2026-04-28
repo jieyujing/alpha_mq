@@ -2,8 +2,8 @@
 GM → Qlib 数据管道 CLI 入口
 
 用法:
-    uv run python scripts/run_pipeline.py --config configs/csi1000_qlib.yaml
-    uv run python scripts/run_pipeline.py --pipeline csi1000_qlib --stages clean,ingest
+    uv run python scripts/run_pipeline.py --config configs/csi1000_data.yaml
+    uv run python scripts/run_pipeline.py --pipeline csi1000_data --stages clean,ingest
 """
 import sys
 import argparse
@@ -43,8 +43,10 @@ def main():
     )
 
     DEFAULT_STAGES = {
-        "csi1000_qlib": ["download", "validate", "clean", "ingest"],
-        "factor_filter": ["merge_gm_data", "ingest_bin", "factor_compute", "data_quality_check", "label_compute", "filter", "export", "report"],
+        "csi1000_data": ["download", "validate", "clean", "ingest"],
+        "alpha158": ["merge_gm_data", "ingest_bin", "factor_compute", "data_quality_check", "label_compute", "export", "report"],
+        "model": ["load", "prepare", "split", "train", "predict", "orient", "backtest", "alphalens", "report"],
+        "factor_filtering": ["load", "qa", "profile", "cluster", "portfolio", "ml_importance", "report"],
     }
 
     if args.config:

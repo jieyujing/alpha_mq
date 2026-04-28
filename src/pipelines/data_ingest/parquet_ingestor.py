@@ -41,15 +41,24 @@ class ParquetIngestor:
         self.fund_dir.mkdir(parents=True, exist_ok=True)
         logging.info(f"Parquet ingestor setup: daily={self.daily_dir}, fundamentals={self.fund_dir}")
 
+    @staticmethod
+    def _load_file(path: Path, **kwargs) -> pd.DataFrame | None:
+        """Load CSV or Parquet based on extension."""
+        if not path.exists():
+            return None
+        if path.suffix == ".parquet":
+            return pd.read_parquet(path, **kwargs)
+        return pd.read_csv(path, **kwargs)
+
     def merge_daily_for_symbol(self, symbol: str) -> bool:
         """合并单只股票的日频数据为宽表"""
         try:
-            # 1. 加载 history_1d (主表)
-            history_path = self.exports_base / "history_1d" / f"{symbol}.csv"
+            # 1. 加载 history_1d (主表) - 支持 csv 或 parquet
+            history_path = self.exports_base / "history_1d" / f"{symbol}.parquet"
             if not history_path.exists():
-                return False
-            history = pd.read_csv(history_path)
-            if history.empty:
+                history_path = self.exports_base / "history_1d" / f"{symbol}.csv"
+            history = self._load_file(history_path)
+            if history is None or history.empty:
                 return False
             history["date"] = pd.to_datetime(history["bob"]).dt.strftime("%Y-%m-%d")
 
@@ -89,7 +98,15 @@ class ParquetIngestor:
                 merge_cols = ["date"] + [c for c in ["tclose", "turnrate", "ttl_shr", "circ_shr"] if c in basic.columns]
                 history = history.merge(basic[merge_cols], on="date", how="left")
 
-            # 6. 选择最终列并去重排序
+            # 6. 前值填充：将季度/不定期发布的数据对齐到每个交易日
+            ffill_cols = [c for c in self.DAILY_OUTPUT_FIELDS if c not in (
+                "date", "open", "high", "low", "close", "volume", "amount", "pre_close"
+            )]
+            for col in ffill_cols:
+                if col in history.columns:
+                    history[col] = history[col].ffill()
+
+            # 7. 选择最终列并去重排序
             available = [c for c in self.DAILY_OUTPUT_FIELDS if c in history.columns]
             result = history[available].copy()
             result = result.drop_duplicates(subset=["date"]).sort_values("date").reset_index(drop=True)
@@ -106,22 +123,22 @@ class ParquetIngestor:
     def merge_fundamentals_for_symbol(self, symbol: str) -> bool:
         """合并单只股票的三大财务报表"""
         try:
-            frames = {}
+            frames = []
             for cat in ["fundamentals_income", "fundamentals_balance", "fundamentals_cashflow"]:
                 cat_path = self.exports_base / cat / f"{symbol}.csv"
                 if cat_path.exists():
                     df = pd.read_csv(cat_path)
                     if not df.empty:
-                        frames[cat] = df
+                        # Tag each row with its source category
+                        df["_source"] = cat
+                        frames.append(df)
 
             if not frames:
                 return False
 
-            # 合并三表 (通过 pub_date + rpt_date 联合主键)
-            keys = list(frames.keys())
-            merged = frames[keys[0]]
-            for key in keys[1:]:
-                merged = merged.merge(frames[key], on=["symbol", "pub_date", "rpt_date"], how="outer", suffixes=("", f"_{key}"))
+            # Concatenate all tables vertically (they share rpt_date/pub_date but different fields)
+            merged = pd.concat(frames, ignore_index=True)
+            merged = merged.drop_duplicates(subset=["symbol", "pub_date", "rpt_date", "_source"])
 
             out_path = self.fund_dir / f"{symbol}.parquet"
             merged.to_parquet(out_path, index=False)

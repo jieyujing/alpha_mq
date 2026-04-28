@@ -1,0 +1,23 @@
+# Alpha158 因子生成 Pipeline 配置
+# 用法: uv run python scripts/run_pipeline.py --config configs/alpha158.yaml
+#
+# 数据流: csi1000_data pipeline 将 GM 数据下载到 data/exports/ → alpha158 从 exports 读取
+
+pipeline:
+  name: alpha158
+  stages:
+    - factor_compute         # 计算 Alpha158 因子
+    - label_compute          # 多周期 forward return 标签
+    - export                 # 输出 parquet + yaml
+    - report                 # 生成摘要报告
+
+data:
+  parquet_input: data/parquet         # Parquet 宽表数据目录 (作为输入)
+  instruments: "csi1000"
+  start_date: "2020-01-01"
+  end_date: null
+
+output:
+  parquet: data/alpha158_pool.parquet
+  yaml: data/alpha158_pool.yaml
+  report: data/alpha158_report.md

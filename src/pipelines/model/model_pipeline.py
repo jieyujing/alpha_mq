@@ -12,6 +12,7 @@ from pipelines.model.base_model import BaseModel, get_model
 from pipelines.model.feature_prep import FeaturePreprocessor, winsorize_label_by_date_quantile
 from pipelines.model.evaluator import compute_ic_by_date, compute_metrics_from_ic_series, orient_signal, compute_model_metrics
 from pipelines.model.backtest import topk_backtest, compute_backtest_metrics
+from pipelines.model.rolling_trainer import RollingTrainer
 
 
 @dataclass
@@ -111,6 +112,13 @@ class ModelPipeline(DataPipeline):
     # --- Stage: split ---
 
     def make_time_splits(self):
+        if "rolling" in self.config:
+            self._make_rolling_splits()
+        else:
+            self._make_static_splits()
+
+    def _make_static_splits(self):
+        """Original static split logic."""
         split_cfg = self.config.get("split", {})
         self.splits = {}
         for label_name in self.config["model"]["target_labels"]:
@@ -122,7 +130,6 @@ class ModelPipeline(DataPipeline):
             test_start = split_cfg.get("test_start", "2024-07-01")
             test_end = split_cfg.get("test_end")
 
-            # Purge: subtract horizon trading days from boundaries
             if split_cfg.get("purge_by_label", True):
                 train_end_adj = self._subtract_trading_days(train_end, horizon)
                 val_end_adj = self._subtract_trading_days(val_end, horizon)
@@ -138,23 +145,22 @@ class ModelPipeline(DataPipeline):
         logging.info(f"Time splits computed for {len(self.splits)} labels")
 
     def _subtract_trading_days(self, end_date: str, days: int) -> str:
-        """Subtract N trading days from a date string."""
-        try:
-            import qlib
-            from qlib.data import D
-            qlib.init(provider_uri=self.config["data"]["qlib_bin"])
-            cal = D.calendar()
-        except Exception:
-            # Fallback: use calendar days (5 trading days ~ 7 calendar days)
-            from datetime import timedelta
-            end = pd.Timestamp(end_date) if not isinstance(end_date, pd.Timestamp) else end_date
-            return (end - timedelta(days=days * 7 // 5)).strftime("%Y-%m-%d")
-
-        end = pd.Timestamp(end_date) if not isinstance(end_date, pd.Timestamp) else end_date
+        """Subtract N trading days from a date string using the data's own calendar."""
+        if self.df is None or self.df.empty:
+            return end_date
+        
+        # Get unique sorted dates from data
+        cal = pd.Series(self.df.index.get_level_values(0).unique()).sort_values()
+        end = pd.Timestamp(end_date)
+        
         cal_before = cal[cal <= end]
+        if cal_before.empty:
+            return end_date
+            
         if len(cal_before) <= days:
-            return cal_before[0].strftime("%Y-%m-%d")
-        return cal_before[-days - 1].strftime("%Y-%m-%d")
+            return cal_before.iloc[0].strftime("%Y-%m-%d")
+        
+        return cal_before.iloc[-days - 1].strftime("%Y-%m-%d")
 
     def _get_date_mask(self, y: pd.Series, start: str, end: Optional[str]) -> pd.Series:
         """Boolean mask for dates in [start, end]."""
@@ -167,6 +173,13 @@ class ModelPipeline(DataPipeline):
     # --- Stage: train ---
 
     def train_models(self):
+        if "rolling" in self.config:
+            self._rolling_train_models()
+        else:
+            self._static_train_models()
+
+    def _static_train_models(self):
+        """Original static training logic."""
         model_cfg = self.config["model"]
         model_names = model_cfg.get("names", ["elastic_net"])
         label_names = model_cfg.get("target_labels", ["label_5d"])
@@ -187,7 +200,6 @@ class ModelPipeline(DataPipeline):
                 X_val = self.X[val_mask]
                 y_val = label[val_mask]
 
-                # Drop NaN labels
                 train_valid = y_train.notna()
                 val_valid = y_val.notna()
                 X_train = X_train[train_valid]
@@ -195,16 +207,13 @@ class ModelPipeline(DataPipeline):
                 X_val = X_val[val_valid]
                 y_val = y_val[val_valid]
 
-                # Train
                 params = model_params.get(model_name, {})
                 model = get_model(model_name, params)
                 model.fit(X_train, y_train)
 
-                # Predict
                 train_pred = model.predict(X_train)
                 val_pred = model.predict(X_val)
 
-                # Metrics
                 metrics = compute_model_metrics(train_pred, y_train, val_pred, y_val)
 
                 val_mean_ic = metrics["val"]["ic_mean"] if "val" in metrics else 0.0
@@ -228,6 +237,13 @@ class ModelPipeline(DataPipeline):
     # --- Stage: predict (test set) ---
 
     def run_predict(self):
+        if "rolling" in self.config:
+            self._rolling_concatenate_predictions()
+        else:
+            self._static_run_predict()
+
+    def _static_run_predict(self):
+        """Original static test prediction logic."""
         for result in self.results:
             label_name = result.label_name
             splits = self.splits[label_name]
@@ -240,7 +256,6 @@ class ModelPipeline(DataPipeline):
 
             X_test = self.X[test_mask]
             y_test = label[test_mask]
-            # Drop NaN labels
             test_valid = y_test.notna()
             X_test = X_test[test_valid]
             y_test = y_test[test_valid]
@@ -252,13 +267,19 @@ class ModelPipeline(DataPipeline):
             test_pred = result.model.predict(X_test)
             result.test_predictions = test_pred
 
-            # Test metrics
             test_ic = compute_ic_by_date(test_pred, y_test)
             result.test_metrics = compute_metrics_from_ic_series(test_ic)
 
     # --- Stage: orient ---
 
     def orient_signals(self):
+        if "rolling" in self.config:
+            self._rolling_orient_signals()
+        else:
+            self._static_orient_signals()
+
+    def _static_orient_signals(self):
+        """Original signal orientation for static split."""
         for result in self.results:
             if result.test_predictions.empty:
                 continue
@@ -279,27 +300,21 @@ class ModelPipeline(DataPipeline):
         # Try to find close price column in raw data
         if "close" in self.df.columns:
             close_col = "close"
-        # Otherwise compute from qlib
+        elif "CLOSE" in self.df.columns:
+            close_col = "CLOSE"
+        
         if close_col is None:
-            try:
-                import qlib
-                from qlib.data import D
-                qlib.init(provider_uri=self.config["data"]["qlib_bin"])
-                instruments = list(self.df.index.get_level_values("instrument").unique())
-                close_data = D.features(instruments, ["$close"], start_time="2020-01-01", end_time=None, freq="day")
-                close_data.columns = ["close"]
-                if close_data.index.names == ["instrument", "datetime"]:
-                    close_data = close_data.swaplevel().sort_index()
-                    close_data.index.names = ["datetime", "instrument"]
-                close_col = "__close__"
-                self.df[close_col] = close_data["close"]
-            except Exception as e:
-                logging.warning(f"Could not load close prices: {e}")
+            # Check if we can use label_1d to reconstruct returns (approximate)
+            if "label_1d" in self.df.columns:
+                logging.info("Using label_1d as returns for backtest")
+                returns_wide = self.df["label_1d"].unstack().shift(1) # label_1d is usually r(t+1)
+            else:
+                logging.warning("No close price or label_1d found. Backtest skipped.")
                 return
-
-        # Pivot to wide format FIRST, then compute pct_change along time axis
-        prices_wide = self.df[close_col].unstack()
-        returns_wide = prices_wide.pct_change()
+        else:
+            # Pivot to wide format FIRST, then compute pct_change along time axis
+            prices_wide = self.df[close_col].unstack()
+            returns_wide = prices_wide.pct_change()
 
         for result in self.results:
             if result.oriented_test_signal.empty:
@@ -322,48 +337,12 @@ class ModelPipeline(DataPipeline):
     # --- Stage: alphalens ---
 
     def generate_alphalens(self):
-        from pipelines.model.alphalens_report import generate_alphalens_tear_sheet
+        from pipelines.model.alphalens_report import generate_multi_model_tear_sheet
 
         output_cfg = self.config.get("output", {})
         alphalens_dir = Path(output_cfg.get("alphalens", "data/model_results/alphalens"))
 
-        # Find best model: prefer regressor with highest OOS Sharpe
-        # (best分层收益表现, not validation ICIR)
-        regressor_names = ["elastic_net", "lgbm_regressor"]
-        best = None
-        best_sharpe = -np.inf
-
-        # Select by OOS Sharpe (from backtest_metrics)
-        for r in self.results:
-            if r.model_name not in regressor_names:
-                continue
-            sharpe = r.backtest_metrics.get("sharpe", np.nan)
-            if np.isnan(sharpe):
-                continue
-            if sharpe > best_sharpe and not r.oriented_test_signal.empty:
-                best_sharpe = sharpe
-                best = r
-
-        # Fallback to ICIR if no backtest metrics
-        if best is None:
-            best_icir = -np.inf
-            for r in self.results:
-                if r.model_name not in regressor_names:
-                    continue
-                icir = abs(r.val_metrics.get("icir", np.nan))
-                if np.isnan(icir):
-                    continue
-                if icir > best_icir and not r.oriented_test_signal.empty:
-                    best_icir = icir
-                    best = r
-
-        if best is None:
-            logging.warning("No valid model result found for Alphalens.")
-            return
-
-        logging.info(f"Alphalens using {best.model_name} + {best.label_name} (Sharpe={best_sharpe:.2f})")
-
-        # Get close prices - try factor pool first, then Qlib
+        # Get close prices: try factor pool columns first, then reconstruct from label_1d
         close_col = None
         for col in self.df.columns:
             if "close" in col.lower():
@@ -371,37 +350,266 @@ class ModelPipeline(DataPipeline):
                 break
 
         if close_col:
-            # Factor pool has close column - pivot to wide
             prices_wide = self.df[[close_col]].unstack()
             prices_wide.columns = prices_wide.columns.droplevel(0)
+        elif "label_1d" in self.df.columns:
+            logging.info("No close price column found. Reconstructing from label_1d returns.")
+            # label_1d ≈ close(t+1)/close(t) - 1; reconstruct price series
+            returns_wide = self.df["label_1d"].unstack()
+            prices_wide = (1 + returns_wide).cumprod() * 100
         else:
-            # Load from Qlib
-            try:
-                import qlib
-                from qlib.data import D
-                qlib.init(provider_uri=self.config["data"]["qlib_bin"])
-                instruments = list(self.df.index.get_level_values("instrument").unique())
-                close_data = D.features(instruments, ["$close"], start_time="2020-01-01", end_time=None, freq="day")
-                close_data.columns = ["close"]
-                if close_data.index.names == ["instrument", "datetime"]:
-                    close_data = close_data.swaplevel().sort_index()
-                    close_data.index.names = ["datetime", "instrument"]
-                prices_wide = close_data["close"].unstack()
-            except Exception as e:
-                logging.warning(f"Could not load close prices for Alphalens: {e}")
-                return
+            logging.warning("No close prices or label_1d found for Alphalens. Skipping.")
+            return
 
-        generate_alphalens_tear_sheet(
-            factor=best.oriented_test_signal,
-            prices=prices_wide,
-            output_dir=alphalens_dir,
-        )
+        # Group results by label_name
+        target_labels = self.config["model"].get("target_labels", [])
+        results_by_label = {}
+        for r in self.results:
+            if r.label_name not in target_labels:
+                continue
+            results_by_label.setdefault(r.label_name, []).append(r)
+
+        # Generate one tear sheet per label
+        for label_name in target_labels:
+            label_results = results_by_label.get(label_name, [])
+            if not label_results:
+                logging.warning(f"No results found for {label_name}. Skipping alphalens.")
+                continue
+
+            logging.info(f"Generating alphalens for {label_name} with {len(label_results)} models")
+            generate_multi_model_tear_sheet(
+                label_name=label_name,
+                results=label_results,
+                prices=prices_wide,
+                output_dir=alphalens_dir,
+            )
 
     # --- Stage: report ---
 
     def generate_report(self):
-        import yaml
+        if "rolling" in self.config:
+            self._generate_rolling_report()
+        else:
+            self._generate_static_report()
 
+    # -- Rolling pipeline methods --
+
+    def _make_rolling_splits(self):
+        """Generate walk-forward windows via RollingTrainer."""
+        self.rolling_trainer = RollingTrainer(
+            config=self.config, df=self.df, X=self.X, labels=self.labels,
+        )
+        self.rolling_windows = self.rolling_trainer.generate_windows_for_all_labels()
+        self.rolling_results = {}
+        logging.info(f"Rolling splits: {sum(len(v) for v in self.rolling_windows.values())} total windows")
+
+    def _rolling_train_models(self):
+        """Train each model for each rolling window."""
+        model_names = self.config["model"].get("names", ["lgbm_regressor"])
+        label_names = self.config["model"].get("target_labels", ["label_5d"])
+
+        self.rolling_results = {}
+
+        for label_name in label_names:
+            windows = self.rolling_windows.get(label_name, [])
+            if not windows:
+                logging.warning(f"No windows for {label_name}")
+                continue
+
+            self.rolling_results[label_name] = []
+            for window in windows:
+                for model_name in model_names:
+                    wr = self.rolling_trainer.train_window(window, model_name, label_name)
+                    self.rolling_results[label_name].append(wr)
+                    if wr.oos_metrics:
+                        oos_ic = wr.oos_metrics.get("ic_mean", 0)
+                        logging.info(
+                            f"Window {wr.window_id} {model_name}/{label_name}: "
+                            f"val IC={wr.val_mean_ic:.4f}, oos IC={oos_ic:.4f}"
+                        )
+
+            logging.info(f"Trained {len(self.rolling_results[label_name])} window-results for {label_name}")
+
+    def _rolling_concatenate_predictions(self):
+        """Merge OOS predictions across windows and create synthetic TrainingResult."""
+        self.rolling_oos_signals = {}
+
+        for label_name, window_results in self.rolling_results.items():
+            # Group by (model_name, label_name) across windows
+            model_names = set(wr.model_name for wr in window_results)
+            for model_name in model_names:
+                model_results = [wr for wr in window_results if wr.model_name == model_name]
+                combined = RollingTrainer.concatenate_oos_signals(model_results)
+                key = f"{model_name}/{label_name}"
+                self.rolling_oos_signals[key] = combined
+
+        # Create synthetic TrainingResult objects for downstream stages
+        self.results = []
+        for label_name, window_results in self.rolling_results.items():
+            model_names = set(wr.model_name for wr in window_results)
+            for model_name in model_names:
+                model_results = [wr for wr in window_results if wr.model_name == model_name]
+                key = f"{model_name}/{label_name}"
+                oos_signal = self.rolling_oos_signals.get(key, pd.Series(dtype=float))
+
+                # Aggregate val metrics across windows
+                val_ics = [wr.val_mean_ic for wr in model_results]
+                avg_val_ic = float(np.mean(val_ics)) if val_ics else 0.0
+                # Average val_metrics
+                avg_val_metrics = {}
+                if model_results and model_results[0].val_metrics:
+                    for k in model_results[0].val_metrics:
+                        vals = [wr.val_metrics.get(k, 0) for wr in model_results]
+                        avg_val_metrics[k] = float(np.mean(vals))
+
+                # Aggregate OOS metrics
+                agg_oos = RollingTrainer.aggregate_ic_metrics(model_results)
+
+                # Use last window's feature importance
+                last_wr = model_results[-1]
+                feat_imp = last_wr.feature_importance
+
+                result = TrainingResult(
+                    model_name=model_name,
+                    label_name=label_name,
+                    model=None,
+                    train_metrics={},
+                    val_metrics=avg_val_metrics,
+                    test_metrics=agg_oos,
+                    val_mean_ic=avg_val_ic,
+                    train_predictions=pd.Series(dtype=float),
+                    val_predictions=pd.Series(dtype=float),
+                    test_predictions=oos_signal,
+                    oriented_test_signal=pd.Series(dtype=float),
+                    oriented_direction=1,
+                    feature_importance=feat_imp,
+                    metadata={"rolling": True, "n_windows": len(model_results)},
+                )
+                self.results.append(result)
+
+        logging.info(f"Concatenated OOS signals for {len(self.rolling_oos_signals)} model/label combos")
+
+    def _rolling_orient_signals(self):
+        """Orient unified rolling OOS signals based on aggregate val IC."""
+        for result in self.results:
+            meta = result.metadata or {}
+            if not meta.get("rolling"):
+                self._static_orient_signals()
+                continue
+            if result.test_predictions.empty:
+                continue
+            oriented, direction = orient_signal(result.val_mean_ic, result.test_predictions)
+            result.oriented_test_signal = oriented
+            result.oriented_direction = direction
+
+    def _generate_rolling_report(self):
+        """Generate rolling-specific markdown report."""
+        output_cfg = self.config.get("output", {})
+        report_path = Path(output_cfg.get("report", "data/model_results/model_report.md"))
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+
+        rolling_cfg = self.config.get("rolling", {})
+        n_windows = len(next(iter(self.rolling_results.values()), []))
+        if not n_windows and self.rolling_results:
+            n_windows = max(len(v) for v in self.rolling_results.values())
+
+        lines = []
+        lines.append("# Rolling Model Training Report")
+        lines.append("")
+        lines.append(f"**Generated**: {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        lines.append(f"**Mode**: {rolling_cfg.get('mode', 'expanding')}")
+        lines.append(f"**Windows**: {n_windows} retraining cycles")
+        lines.append(f"**Step**: every {rolling_cfg.get('step_months', 3)} months")
+        lines.append("")
+
+        # 1. Per-window performance
+        lines.append("## 1. Per-Window Performance")
+        lines.append("")
+        lines.append("| Model | Label | Window | Train Range | Val IC | OOS IC | OOS ICIR |")
+        lines.append("|-------|-------|--------|-------------|--------|--------|----------|")
+        for label_name, window_results in self.rolling_results.items():
+            for wr in window_results:
+                oos_ic = wr.oos_metrics.get("ic_mean", 0)
+                oos_icir = wr.oos_metrics.get("icir", 0)
+                lines.append(
+                    f"| {wr.model_name} | {wr.label_name} | {wr.window_id} | "
+                    f"{wr.train_start} to {wr.train_end} | "
+                    f"{wr.val_mean_ic:.4f} | {oos_ic:.4f} | {oos_icir:.4f} |"
+                )
+        lines.append("")
+
+        # 2. Aggregated OOS metrics
+        lines.append("## 2. Aggregated OOS Metrics (across windows)")
+        lines.append("")
+        lines.append("| Model | Label | Mean IC | IC Std | ICIR | Positive Ratio |")
+        lines.append("|-------|-------|---------|--------|------|----------------|")
+        for label_name, window_results in self.rolling_results.items():
+            model_names = set(wr.model_name for wr in window_results)
+            for model_name in model_names:
+                model_results = [wr for wr in window_results if wr.model_name == model_name]
+                agg = RollingTrainer.aggregate_ic_metrics(model_results)
+                lines.append(
+                    f"| {model_name} | {label_name} | "
+                    f"{agg['mean_ic']:.4f} | {agg['ic_std']:.4f} | "
+                    f"{agg['icir']:.4f} | {agg['positive_ratio']:.2%} |"
+                )
+        lines.append("")
+
+        # 3. OOS Backtest (same format as static)
+        lines.append("## 3. Unified OOS Backtest")
+        lines.append("")
+        lines.append("| Model | Label | Ann Ret | Excess Ann Ret | Sharpe | Max DD | Turnover |")
+        lines.append("|-------|-------|---------|----------------|--------|--------|----------|")
+        for r in self.results:
+            m = r.backtest_metrics
+            if not m:
+                lines.append(f"| {r.model_name} | {r.label_name} | - | - | - | - | - |")
+            else:
+                lines.append(
+                    f"| {r.model_name} | {r.label_name} | "
+                    f"{m.get('ann_return', 0)*100:.2f}% | "
+                    f"{m.get('ann_excess_return', 0)*100:.2f}% | "
+                    f"{m.get('sharpe', 0):.2f} | "
+                    f"{m.get('max_drawdown', 0)*100:.2f}% | "
+                    f"{m.get('avg_turnover', 0):.3f} |"
+                )
+        lines.append("")
+
+        # 4. Best model
+        valid_results = [r for r in self.results if not np.isnan(r.val_metrics.get("icir", np.nan))]
+        if valid_results:
+            best = max(valid_results, key=lambda r: abs(r.val_metrics.get("icir", 0)))
+            lines.append(f"## 4. Best Model: {best.model_name} + {best.label_name}")
+            lines.append("")
+            lines.append(f"- Mean Val IC: {best.val_mean_ic:.4f}")
+            lines.append(f"- Mean Val ICIR: {best.val_metrics.get('icir', 0):.4f}")
+            lines.append(f"- OOS IC: {best.test_metrics.get('ic_mean', 0):.4f}")
+            lines.append(f"- OOS ICIR: {best.test_metrics.get('icir', 0):.4f}")
+            lines.append(f"- Windows: {best.metadata.get('n_windows', 0)}")
+            if best.backtest_metrics:
+                m = best.backtest_metrics
+                lines.append(f"- OOS annual return: {m.get('ann_return', 0)*100:.2f}%")
+                lines.append(f"- OOS Sharpe: {m.get('sharpe', 0):.2f}")
+                lines.append(f"- OOS max drawdown: {m.get('max_drawdown', 0)*100:.2f}%")
+            lines.append("")
+
+            # 5. Feature importance
+            imp = best.model.feature_importance() if best.model else best.feature_importance
+            if not imp.empty:
+                lines.append("## 5. Top 20 Feature Importance (last window)")
+                lines.append("")
+                lines.append("| Rank | Feature | Importance |")
+                lines.append("|------|---------|------------|")
+                top20 = imp.abs().nlargest(20)
+                for rank, (feat, val) in enumerate(top20.items(), 1):
+                    lines.append(f"| {rank} | {feat} | {val:.4f} |")
+                lines.append("")
+
+        report_path.write_text("\n".join(lines), encoding="utf-8")
+        logging.info(f"Rolling report saved to {report_path}")
+
+    def _generate_static_report(self):
+        """Original static report generation."""
         output_cfg = self.config.get("output", {})
         report_path = Path(output_cfg.get("report", "data/model_results/model_report.md"))
         report_path.parent.mkdir(parents=True, exist_ok=True)
@@ -413,7 +621,6 @@ class ModelPipeline(DataPipeline):
         lines.append("**Static split - results may not reflect rolling live performance**")
         lines.append("")
 
-        # 1. Model x Period Direction Table
         lines.append("## 1. Model x Period Direction")
         lines.append("")
         lines.append("| Model | Label | Val IC | Direction | Oriented IC | Oriented ICIR |")
@@ -428,7 +635,6 @@ class ModelPipeline(DataPipeline):
             )
         lines.append("")
 
-        # 2. OOS TopK Excess Table
         lines.append("## 2. Out-of-Sample TopK Performance")
         lines.append("")
         lines.append("| Model | Label | Ann Ret | Excess Ann Ret | Sharpe | Max DD | Turnover | Cost Adj Sharpe |")
@@ -449,7 +655,6 @@ class ModelPipeline(DataPipeline):
                 )
         lines.append("")
 
-        # 3. Best model summary (filter NaN ICIR)
         valid_results = [r for r in self.results if not np.isnan(r.val_metrics.get("icir", np.nan))]
         best = max(valid_results, key=lambda r: abs(r.val_metrics.get("icir", 0))) if valid_results else self.results[0]
         lines.append(f"## 3. Best Model: {best.model_name} + {best.label_name}")
@@ -464,8 +669,7 @@ class ModelPipeline(DataPipeline):
             lines.append(f"- OOS max drawdown: {m.get('max_drawdown', 0)*100:.2f}%")
         lines.append("")
 
-        # 4. Factor Importance (top 20 for best model)
-        imp = best.model.feature_importance()
+        imp = best.model.feature_importance() if best.model else pd.Series(dtype=float)
         if not imp.empty:
             lines.append("## 4. Top 20 Feature Importance")
             lines.append("")

@@ -1,8 +1,8 @@
 # CSI 1000 数据管道配置
-# 用法: uv run python scripts/run_pipeline.py --config configs/csi1000_qlib.yaml
+# 用法: uv run python scripts/run_pipeline.py --config configs/csi1000_data.yaml
 
 pipeline:
-  name: csi1000_qlib
+  name: csi1000_data
   stages:
     - download                    # 从 GM API 增量下载数据 (需 GM token)
     - validate                    # 验证数据完整性

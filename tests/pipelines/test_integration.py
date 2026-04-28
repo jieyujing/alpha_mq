@@ -3,18 +3,18 @@ import pandas as pd
 import tempfile
 from pathlib import Path
 from pipelines import get_pipeline, PIPELINE_REGISTRY
-from pipelines.data_ingest.csi1000_pipeline import CSI1000QlibPipeline
+from pipelines.data_ingest.csi1000_pipeline import CSI1000DataPipeline
 
 
 class TestPipelineRegistry:
     def test_registry_has_csi1000(self):
         """测试注册表包含 CSI1000 管道"""
-        assert "csi1000_qlib" in PIPELINE_REGISTRY
+        assert "csi1000_data" in PIPELINE_REGISTRY
 
     def test_get_pipeline_returns_class(self):
         """测试 get_pipeline 返回正确的类"""
-        pipeline_class = get_pipeline("csi1000_qlib")
-        assert pipeline_class == CSI1000QlibPipeline
+        pipeline_class = get_pipeline("csi1000_data")
+        assert pipeline_class == CSI1000DataPipeline
 
     def test_get_unknown_pipeline_raises(self):
         """测试获取未知管道抛出异常"""
@@ -22,7 +22,7 @@ class TestPipelineRegistry:
             get_pipeline("unknown_pipeline")
 
 
-class TestCSI1000QlibPipelineIntegration:
+class TestCSI1000DataPipelineIntegration:
     def test_pipeline_dry_run_clean_only(self):
         """测试 pipeline dry-run (仅 clean 阶段)"""
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -71,14 +71,14 @@ class TestCSI1000QlibPipelineIntegration:
 
             # 配置 pipeline
             config = {
-                "pipeline": {"name": "csi1000_qlib", "stages": ["validate", "clean"]},
+                "pipeline": {"name": "csi1000_data", "stages": ["validate", "clean"]},
                 "exports_base": str(exports_base),
                 "qlib_output": str(qlib_output),
                 "qlib_bin": str(qlib_bin)
             }
 
             # 运行 pipeline
-            pipeline = CSI1000QlibPipeline(config)
+            pipeline = CSI1000DataPipeline(config)
             pipeline.run()
 
             # 验证输出
@@ -98,13 +98,13 @@ class TestCSI1000QlibPipelineIntegration:
             # 不创建任何数据目录
 
             config = {
-                "pipeline": {"name": "csi1000_qlib", "stages": ["validate"]},
+                "pipeline": {"name": "csi1000_data", "stages": ["validate"]},
                 "exports_base": str(exports_base),
                 "qlib_output": str(qlib_output),
                 "qlib_bin": str(qlib_bin)
             }
 
-            pipeline = CSI1000QlibPipeline(config)
+            pipeline = CSI1000DataPipeline(config)
             pipeline.setup()
             errors = pipeline.validate()
 
