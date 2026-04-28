@@ -1,7 +1,37 @@
 pipeline:
   name: factor_filtering
+  stages:
+    - load
+    - ring0_qa
+    - ring1_preprocess
+    - ring2_profile
+    - ring3_filter
+    - ring4_stability
+    - ring5_cluster
+    - ring6_select
+    - ring7_portfolio
+    - ring8_ml
+    - report
   output_dir: "data/reports/factor_filtering"
 
 data:
   factor_path: "data/alpha158_pool.parquet"
   label_col: "label_20d"
+  fundamentals_path: "data/parquet/fundamentals"  # 可选
+
+filter:
+  min_abs_ic: 0.01
+  min_coverage: 0.60
+
+clustering:
+  distance_threshold: 0.5
+  method: "factor_return_correlation"
+  max_sample_rows: 50000
+
+preprocess:
+  winsorize_lower: 0.01
+  winsorize_upper: 0.99
+  transform_method: "rank_pct"
+
+representative:
+  n_per_cluster: 2
