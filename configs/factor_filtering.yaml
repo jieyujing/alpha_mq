@@ -1,0 +1,7 @@
+pipeline:
+  name: factor_filtering
+  output_dir: "data/reports/factor_filtering"
+
+data:
+  factor_path: "data/alpha158_pool.parquet"
+  label_col: "label_20d"
