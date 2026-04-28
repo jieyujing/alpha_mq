@@ -8,10 +8,10 @@ import polars as pl
 
 from pipelines.base import DataPipeline
 from pipelines.factor_filtering.steps.step00_data_qa import DataAndLabelQA
-from pipelines.factor_filtering.steps.step02_profiling import FactorProfiler
-from pipelines.factor_filtering.steps.step03_clustering import FactorClustering
-from pipelines.factor_filtering.steps.step04_portfolio import PortfolioValidation
-from pipelines.factor_filtering.steps.step05_ml_importance import MLImportance
+from pipelines.factor_filtering.steps.step02_profiling import SingleFactorProfiler as FactorProfiler
+from pipelines.factor_filtering.steps.step05_clustering import FactorClustering
+from pipelines.factor_filtering.steps.step08_ml_importance import MLImportanceVerifier
+from pipelines.factor_filtering.steps.step07_portfolio import PortfolioValidator
 
 
 class FactorFilteringPipeline(DataPipeline):
@@ -60,8 +60,10 @@ class FactorFilteringPipeline(DataPipeline):
 
         self.ic_results = {}
         for col in factor_cols:
-            ic = step.compute_ic(self.df, col)
-            self.ic_results[col] = ic["rank_ic"]
+            daily_ic = step.compute_daily_ic(self.df, col)
+            ic_series = daily_ic.select(pl.col("ic")).to_series().drop_nulls()
+            rank_ic = ic_series.mean() if len(ic_series) > 0 else 0.0
+            self.ic_results[col] = float(rank_ic)
 
         mean_ic = sum(self.ic_results.values()) / max(len(self.ic_results), 1)
         logging.info(f"Profiling done. Mean |IC|={abs(mean_ic):.4f} across {len(self.ic_results)} factors")
@@ -71,24 +73,23 @@ class FactorFilteringPipeline(DataPipeline):
     def run_clustering(self):
         step = FactorClustering()
         factor_cols = [c for c in self.df.columns if c not in ("datetime", "instrument") and not c.startswith("label")]
-        self.cluster_labels = step.fit_predict(self.df, factor_cols)
+        self.cluster_labels = step.fit_predict(self.df, factor_cols, self.label_col)
         n_clusters = len(set(self.cluster_labels.values()))
         logging.info(f"Clustering done. {n_clusters} clusters across {len(factor_cols)} factors")
 
     # --- Stage: portfolio ---
 
     def run_portfolio(self):
-        step = PortfolioValidation()
-        factor_cols = [c for c in self.df.columns if c not in ("datetime", "instrument") and not c.startswith("label")]
-        self.portfolio_metrics = step.evaluate_portfolio(self.df, factor_cols, self.label_col)
+        step = PortfolioValidator()
+        _, self.portfolio_metrics = step.process(self.df, self.ic_results)
         logging.info(f"Portfolio validation done. Metrics: {self.portfolio_metrics}")
 
     # --- Stage: ml_importance ---
 
     def run_ml_importance(self):
-        step = MLImportance()
-        factor_cols = [c for c in self.df.columns if c not in ("datetime", "instrument") and not c.startswith("label")]
-        self.ml_importance = step.evaluate_importance(self.df, factor_cols, self.label_col)
+        step = MLImportanceVerifier()
+        _, report = step.process(self.df)
+        self.ml_importance = report.get("importance", {})
         top5 = sorted(self.ml_importance.items(), key=lambda x: x[1], reverse=True)[:5]
         logging.info(f"ML importance done. Top 5: {top5}")
 
