@@ -42,6 +42,7 @@ class SingleFactorProfiler:
             .alias("group")
         )
         group_avg = (ranked
+            .filter(pl.col("group").is_not_null())
             .group_by("group")
             .agg(pl.col(self.label_col).mean().alias("mean_label"))
             .sort("group"))
@@ -49,6 +50,7 @@ class SingleFactorProfiler:
         return {
             f"Q{int(row['group'])+1}": row["mean_label"]
             for row in group_avg.iter_rows(named=True)
+            if row['group'] is not None and row['mean_label'] is not None
         }
 
     def process(self, df: pl.DataFrame) -> tuple[pl.DataFrame, dict]:
