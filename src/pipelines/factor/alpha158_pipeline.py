@@ -11,6 +11,7 @@ import pandas as pd
 from pipelines.base import DataPipeline
 from pipelines.factor.factor_loader import FactorLoader
 from pipelines.factor.label_builder import LabelBuilder
+from pipelines.factory import create_data_source
 
 
 class Alpha158Pipeline(DataPipeline):
@@ -135,10 +136,39 @@ class Alpha158Pipeline(DataPipeline):
         logging.info(f"Factor pool metadata saved to {yaml_path}")
 
     def _load_close_for_export(self) -> pd.Series | None:
-        """从 daily parquet 加载 close 价格，返回与因子池索引对齐的 Series。"""
+        """从 daily parquet 或数据源加载 close 价格，返回与因子池索引对齐的 Series。"""
         import os
         import polars as pl
 
+        source_type = self.config.get("data", {}).get("source_type", "gm")
+        if source_type == "rqalpha":
+            # 如果是 RQAlpha，尝试直接从 bundle 加载 close，避免依赖 parquet
+            try:
+                ds = create_data_source(self.config)
+                date_range = self.factors_df.index.get_level_values("datetime")
+                start = str(date_range.min().date())
+                end = str(date_range.max().date())
+                symbols = list(self.factors_df.index.get_level_values("instrument").unique())
+                
+                all_close = []
+                for sym in symbols:
+                    # RQAlpha fetch_history returns df with 'bob' and 'close' (renamed from datetime)
+                    df = ds.fetch_history(sym, start, end, fields=["datetime", "close"])
+                    if not df.empty:
+                        df["instrument"] = sym
+                        all_close.append(df)
+                
+                if not all_close:
+                    return None
+                
+                full_df = pd.concat(all_close)
+                full_df = full_df.rename(columns={"bob": "datetime"})
+                full_df = full_df.set_index(["datetime", "instrument"])
+                return full_df["close"]
+            except Exception as e:
+                logging.warning(f"Failed to fetch close prices from RQAlpha: {e}")
+                # Fallback to parquet
+        
         daily_path = os.path.join(self.parquet_input, "daily", "*.parquet")
         date_range = self.factors_df.index.get_level_values("datetime")
         start = str(date_range.min().date())

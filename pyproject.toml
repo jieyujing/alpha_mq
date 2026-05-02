@@ -5,6 +5,7 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "akshare>=1.18.59",
     "alphalens",
     "alphalens-reloaded>=0.4.3",
     "gm>=3.0.183; sys_platform != 'darwin'",

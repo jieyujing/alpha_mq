@@ -12,6 +12,8 @@ pipeline:
     - report                 # 生成摘要报告
 
 data:
+  source_type: "rqalpha"              # 数据源类型: gm 或 rqalpha
+  rqalpha_bundle_path: "/Users/link/.rqalpha/bundle"
   parquet_input: data/parquet         # Parquet 宽表数据目录 (作为输入)
   instruments: "csi1000"
   start_date: "2020-01-01"

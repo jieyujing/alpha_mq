@@ -10,6 +10,7 @@ class DataSource(Protocol):
     fetch_history: Callable[..., pd.DataFrame]
     fetch_valuation: Callable[..., pd.DataFrame]
     fetch_basic: Callable[..., pd.DataFrame]
+    fetch_index_constituents: Callable[[str], list[str]]
     set_token: Callable[[str], None]
 
 
@@ -113,6 +114,15 @@ class GMDataSource:
             **kw
         )
         return self._clean_tz(df)
+
+    def fetch_index_constituents(self, index_code: str) -> list[str]:
+        """获取指数成分股列表"""
+        from gm.api import stk_get_index_constituents
+        self.limiter.wait()
+        df = stk_get_index_constituents(index=index_code)
+        if df is None or df.empty:
+            return []
+        return df["symbol"].tolist()
 
     def _clean_tz(self, df: Any) -> pd.DataFrame:
         """清理时区信息，确保兼容性"""

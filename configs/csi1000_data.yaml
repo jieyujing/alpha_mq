@@ -16,5 +16,9 @@ start_date: "2020-01-01"          # 数据起始日期
 end_date: null                    # 数据结束日期 (null = today)
 
 # 数据目录配置
+data:
+  source_type: "rqalpha"
+  rqalpha_bundle_path: "/Users/link/.rqalpha/bundle"
+
 exports_base: data/exports        # GM 下载数据存放目录 (history_1d, fundamentals_*, valuation 等)
 parquet_output: data/parquet      # Parquet 合并输出目录 (daily/, fundamentals/)

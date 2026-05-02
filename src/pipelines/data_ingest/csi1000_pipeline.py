@@ -47,22 +47,30 @@ class CSI1000DataPipeline(DataPipeline):
 
     def download(self):
         """
-        从 GM API 增量下载数据
+        从配置的数据源下载数据。
+        目前主要支持 GM 增量下载，未来可扩展至其他源。
         """
         import sys
         from pathlib import Path
+        import os
 
         # 确保 src 目录在 sys.path 中
         src_path = Path(__file__).parent.parent.parent
         if str(src_path) not in sys.path:
             sys.path.insert(0, str(src_path))
 
+        source_type = self.config.get("data", {}).get("source_type", "gm")
+        
+        if source_type == "rqalpha":
+            logging.info("RQAlpha source detected. Syncing from local bundle into exports...")
+            self._sync_from_rqalpha()
+            return
+
         from data_download import CSI1000Downloader
 
         # 获取 GM token (优先从环境变量)
-        token = self.config.get("token")
+        token = self.config.get("token") or self.config.get("data", {}).get("token")
         if not token:
-            import os
             token = os.environ.get("GM_TOKEN")
 
         if not token:
@@ -83,6 +91,42 @@ class CSI1000DataPipeline(DataPipeline):
         downloader = CSI1000Downloader(download_config)
         downloader.run()
         logging.info("Download stage completed")
+
+    def _sync_from_rqalpha(self):
+        """从 RQAlpha 本地数据束同步数据到 data/exports"""
+        from src.pipelines.factory import create_data_source
+        from tqdm import tqdm
+        
+        ds = create_data_source(self.config)
+        index_code = self.config.get("index_code", "SHSE.000852")
+        symbols = ds.fetch_index_constituents(index_code)
+        
+        if not symbols:
+            logging.warning(f"No constituents found for {index_code} in RQAlpha bundle.")
+            return
+
+        # 包含指数自身
+        all_symbols = sorted(list(set(symbols + [index_code])))
+        logging.info(f"Syncing {len(all_symbols)} symbols from RQAlpha...")
+
+        start_date = self.config.get("start_date", "2020-01-01")
+        end_date = self.config.get("end_date") or datetime.now().strftime("%Y-%m-%d")
+
+        # 1. 历史行情 (history_1d)
+        hist_dir = self.exports_base / "history_1d"
+        hist_dir.mkdir(parents=True, exist_ok=True)
+        
+        for sym in tqdm(all_symbols, desc="Syncing history_1d"):
+            df = ds.fetch_history(sym, start_date, end_date, frequency="1d")
+            if not df.empty:
+                df.to_parquet(hist_dir / f"{sym}.parquet", index=False)
+
+        # 2. 基础数据 (valuation/basic) - RQAlpha 适配器目前返回空，
+        # 但我们至少要保证目录存在，或者后续流程能处理空数据。
+        for cat in ["valuation", "basic", "mktvalue", "adj_factor"]:
+            (self.exports_base / cat).mkdir(parents=True, exist_ok=True)
+        
+        logging.info("Sync from RQAlpha completed.")
 
     def validate(self) -> List[str]:
         """验证数据完整性"""

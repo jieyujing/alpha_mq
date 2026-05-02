@@ -5,21 +5,32 @@ ETF 数据获取工具库 - 使用重构后的 DataSource。
 import pandas as pd
 from typing import Dict, List, Optional
 
-from src.etf_portfolio.data_source import GMDataSource, RateLimiter
+from src.etf_portfolio.data_source import GMDataSource, RateLimiter, DataSource
+from src.pipelines.factory import create_data_source
 
 # Token (保持硬编码)
 TOKEN = "478dc4635c5198dbfcc962ac3bb209e5327edbff"
 
 # 创建默认数据源实例 (延迟初始化)
-_DEFAULT_SOURCE: Optional[GMDataSource] = None
+_DEFAULT_SOURCE: Optional[DataSource] = None
 
 
-def _get_default_source() -> GMDataSource:
+def _get_default_source() -> DataSource:
     """获取默认数据源实例 (延迟初始化)"""
     global _DEFAULT_SOURCE
     if _DEFAULT_SOURCE is None:
-        limiter = RateLimiter(max_req=950)
-        _DEFAULT_SOURCE = GMDataSource(limiter=limiter, token=TOKEN)
+        import os
+        source_type = os.environ.get("DATA_SOURCE_TYPE", "gm").lower()
+        bundle_path = os.environ.get("RQALPHA_BUNDLE_PATH", "/Users/link/.rqalpha/bundle")
+        
+        config = {
+            "data": {
+                "source_type": source_type,
+                "rqalpha_bundle_path": bundle_path,
+                "token": TOKEN
+            }
+        }
+        _DEFAULT_SOURCE = create_data_source(config)
     return _DEFAULT_SOURCE
 
 
@@ -27,7 +38,7 @@ def fetch_etf_history(
     symbols: List[str],
     start_date: str,
     end_date: str,
-    source: Optional[GMDataSource] = None
+    source: Optional[DataSource] = None
 ) -> pd.DataFrame:
     """
     获取 ETF 历史数据并返回 MultiIndex DataFrame。
