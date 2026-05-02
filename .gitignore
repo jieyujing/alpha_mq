@@ -76,3 +76,4 @@ data/
 # Git Worktrees
 .worktrees/
 worktrees/
+.worktrees/
