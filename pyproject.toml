@@ -18,7 +18,9 @@ dependencies = [
     "pytest>=9.0.3",
     "quantstats>=0.0.81",
     "riskfolio-lib>=7.2.1",
+    "rqalpha",
     "scikit-learn>=1.4",
+    "tables",
     "tenacity>=9.1.4",
     "tqdm>=4.67.3",
 ]
@@ -35,3 +37,8 @@ packages = ["src"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
+
+[tool.uv]
+# workaround for rqalpha build failure
+[tool.uv.extra-build-dependencies]
+rqalpha = ["setuptools<70", "wheel", "Cython"]
