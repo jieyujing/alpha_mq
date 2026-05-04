@@ -215,8 +215,9 @@ class RollingTrainer:
             return pd.Series(dtype=float)
 
         combined = pd.concat(all_preds)
-        # Overlap resolution: latest window wins
-        combined = combined.groupby(combined.index).last()
+        # Overlap resolution: latest window wins. 
+        # Use level to ensure MultiIndex is preserved.
+        combined = combined.groupby(level=combined.index.names).last()
         return combined
 
     @staticmethod
@@ -226,7 +227,7 @@ class RollingTrainer:
         """Aggregate IC metrics across all windows."""
         all_ic = pd.concat([wr.oos_ic_series for wr in window_results if not wr.oos_ic_series.empty])
         if all_ic.empty:
-            return {"mean_ic": 0.0, "ic_std": 0.0, "icir": 0.0, "positive_ratio": 0.0, "n_dates": 0}
+            return {"ic_mean": 0.0, "ic_std": 0.0, "icir": 0.0, "positive_ratio": 0.0, "n_dates": 0}
 
         return compute_metrics_from_ic_series(all_ic)
 

@@ -60,11 +60,11 @@ class SingleFactorProfiler:
 
         for col in factor_cols:
             daily_ic = self.compute_daily_ic(df, col)
-            ic_series = daily_ic.select(pl.col("ic")).to_series().drop_nulls()
+            ic_series = daily_ic.select(pl.col("ic")).to_series().drop_nulls().drop_nans()
 
             if len(ic_series) < 2:
                 metrics[col] = {"mean_rank_ic": 0.0, "icir": 0.0, "ic_win_rate": 0.0,
-                                "group_returns": {}, "long_short": 0.0, "monotonicity": 0.0, "n_days": 0}
+                                "group_returns": {}, "long_short": 0.0, "monotonicity": 0.0}
                 continue
 
             mean_ic = ic_series.mean()

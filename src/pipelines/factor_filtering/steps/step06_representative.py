@@ -53,6 +53,7 @@ class RepresentativeSelector:
         selected = []
         selection_detail = []
 
+        import numpy as np
         for cid in sorted(cluster_to_factors):
             factors = cluster_to_factors[cid]
             scores = []
@@ -60,10 +61,10 @@ class RepresentativeSelector:
                 m = ic_metrics.get(f, {})
                 s = stability.get(f, {})
 
-                icir = abs(m.get("icir", 0))
-                mono = abs(m.get("monotonicity", 0))
-                ls = abs(m.get("long_short", 0))
-                stab = s.get("stability_score", 0.5)
+                icir = float(np.nan_to_num(abs(m.get("icir", 0)), nan=0.0))
+                mono = float(np.nan_to_num(abs(m.get("monotonicity", 0)), nan=0.0))
+                ls = float(np.nan_to_num(abs(m.get("long_short", 0)), nan=0.0))
+                stab = float(np.nan_to_num(s.get("stability_score", 0.5), nan=0.5))
 
                 scores.append({
                     "factor": f,

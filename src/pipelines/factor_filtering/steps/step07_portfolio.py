@@ -42,7 +42,7 @@ class PortfolioValidator:
             pl.corr(pl.col("signal"), pl.col(label_col), method="spearman").alias("ic")
         ).drop_nulls()
 
-        ic_series = daily.select(pl.col("ic")).to_series().drop_nulls()
+        ic_series = daily.select(pl.col("ic")).to_series().drop_nulls().drop_nans()
         if len(ic_series) < 2:
             return {"mean_ic": 0.0, "icir": 0.0, "n_days": 0}
 

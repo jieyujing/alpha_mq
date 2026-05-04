@@ -337,12 +337,15 @@ class ModelPipeline(DataPipeline):
     # --- Stage: alphalens ---
 
     def generate_alphalens(self):
-        from pipelines.model.alphalens_report import generate_multi_model_tear_sheet
+        """Generate Alphalens tear sheet using the new AlphalensAnalyzer."""
+        from pipelines.analysis.alphalens_analysis import AlphalensAnalyzer, AlphalensAnalysisConfig
 
         output_cfg = self.config.get("output", {})
-        alphalens_dir = Path(output_cfg.get("alphalens", "data/model_results/alphalens"))
+        alphalens_base_dir = Path(output_cfg.get("alphalens", "data/model_results/alphalens"))
+        alphalens_base_dir.mkdir(parents=True, exist_ok=True)
 
-        # Get close prices: try factor pool columns first, then reconstruct from label_1d
+        # 1. Prepare Price Data (symbol_factor_path equivalent)
+        # The analyzer expects a 'symbol_frame' with trade_date, symbol, daily_return
         close_col = None
         for col in self.df.columns:
             if "close" in col.lower():
@@ -350,39 +353,68 @@ class ModelPipeline(DataPipeline):
                 break
 
         if close_col:
-            prices_wide = self.df[[close_col]].unstack()
-            prices_wide.columns = prices_wide.columns.droplevel(0)
+            prices_df = self.df[[close_col]].copy()
+            prices_df["daily_return"] = prices_df.groupby(level=1)[close_col].pct_change()
         elif "label_1d" in self.df.columns:
-            logging.info("No close price column found. Reconstructing from label_1d returns.")
-            # label_1d ≈ close(t+1)/close(t) - 1; reconstruct price series
-            returns_wide = self.df["label_1d"].unstack()
-            prices_wide = (1 + returns_wide).cumprod() * 100
+            logging.info("No close price column found. Using label_1d as daily_return.")
+            prices_df = self.df[["label_1d"]].copy()
+            prices_df.columns = ["daily_return"]
         else:
             logging.warning("No close prices or label_1d found for Alphalens. Skipping.")
             return
 
-        # Group results by label_name
-        target_labels = self.config["model"].get("target_labels", [])
-        results_by_label = {}
-        for r in self.results:
-            if r.label_name not in target_labels:
-                continue
-            results_by_label.setdefault(r.label_name, []).append(r)
+        # Prepare symbol_frame format for analyzer
+        symbol_frame = prices_df.reset_index()
+        symbol_frame.columns = ["trade_date", "symbol", "daily_return"] if len(symbol_frame.columns) == 3 else ["trade_date", "symbol", "close", "daily_return"]
+        if "close" not in symbol_frame.columns:
+            symbol_frame["close"] = 100.0 # Dummy
+        
+        # Add required columns for build_prices
+        symbol_frame["hold_contract"] = "dummy" # analyzer checks for this
+        
+        symbol_factor_path = alphalens_base_dir / "temp_symbol_data.parquet"
+        symbol_frame.to_parquet(symbol_factor_path, index=False)
 
-        # Generate one tear sheet per label
-        for label_name in target_labels:
-            label_results = results_by_label.get(label_name, [])
-            if not label_results:
-                logging.warning(f"No results found for {label_name}. Skipping alphalens.")
+        # 2. Process each result (factor_path equivalent)
+        for result in self.results:
+            if result.test_predictions.empty:
                 continue
+            
+            model_label_name = f"{result.model_name}_{result.label_name}"
+            model_dir = alphalens_base_dir / model_label_name
+            model_dir.mkdir(parents=True, exist_ok=True)
 
-            logging.info(f"Generating alphalens for {label_name} with {len(label_results)} models")
-            generate_multi_model_tear_sheet(
-                label_name=label_name,
-                results=label_results,
-                prices=prices_wide,
-                output_dir=alphalens_dir,
+            # Prepare factor_frame format for analyzer
+            factor_frame = result.test_predictions.reset_index()
+            factor_frame.columns = ["trade_date", "symbol", "factor_value"]
+            factor_column = "factor_value"
+            
+            factor_path = model_dir / "temp_factor_data.parquet"
+            factor_frame.to_parquet(factor_path, index=False)
+
+            # 3. Run AlphalensAnalyzer
+            config = AlphalensAnalysisConfig(
+                output_dir=model_dir,
+                factor_path=factor_path,
+                symbol_factor_path=symbol_factor_path,
+                factor_column=factor_column,
+                periods=(1, 5, 10, 20),
+                quantiles=self.config.get("backtest", {}).get("quantiles", 5),
             )
+
+            try:
+                analyzer = AlphalensAnalyzer(config)
+                logging.info(f"Running Alphalens analysis for {model_label_name}")
+                analyzer.run(factor_path, symbol_factor_path)
+            except Exception as e:
+                logging.error(f"Alphalens analysis failed for {model_label_name}: {e}")
+            finally:
+                if factor_path.exists():
+                    factor_path.unlink()
+
+        # Cleanup temp symbol data
+        if symbol_factor_path.exists():
+            symbol_factor_path.unlink()
 
     # --- Stage: report ---
 
@@ -550,7 +582,7 @@ class ModelPipeline(DataPipeline):
                 agg = RollingTrainer.aggregate_ic_metrics(model_results)
                 lines.append(
                     f"| {model_name} | {label_name} | "
-                    f"{agg['mean_ic']:.4f} | {agg['ic_std']:.4f} | "
+                    f"{agg['ic_mean']:.4f} | {agg['ic_std']:.4f} | "
                     f"{agg['icir']:.4f} | {agg['positive_ratio']:.2%} |"
                 )
         lines.append("")

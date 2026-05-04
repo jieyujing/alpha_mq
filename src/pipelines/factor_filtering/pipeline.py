@@ -271,7 +271,82 @@ class FactorFilteringPipeline(DataPipeline):
         report_path.write_text("\n".join(lines), encoding="utf-8")
         logging.info(f"Report saved to {report_path}")
 
-        # Save filtered factor pool
+        # 1.1 PDF report
+        try:
+            from fpdf import FPDF
+            import numpy as np
+
+            pdf = FPDF()
+            pdf.set_auto_page_break(auto=True, margin=15)
+
+            # Use system font for Chinese support
+            font_path = "/System/Library/Fonts/STHeiti Medium.ttc"
+            pdf.add_font("STHeiti", "", font_path)
+            pdf.add_page()
+
+            pdf.set_font("STHeiti", size=16)
+            pdf.cell(200, 10, text="Factor Filtering Report", ln=True, align='C')
+            pdf.set_font("STHeiti", size=10)
+            pdf.cell(200, 10, text=f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", ln=True, align='C')
+            pdf.ln(10)
+
+            # Ring 0 Summary
+            pdf.set_font("STHeiti", size=12)
+            pdf.cell(200, 10, text="Ring 0: Data & Label QA", ln=True)
+            pdf.set_font("STHeiti", size=10)
+            pdf.cell(200, 7, text=f"- Total rows: {self.df.height}", ln=True)
+            pdf.cell(200, 7, text=f"- Total columns: {self.df.width}", ln=True)
+            pdf.cell(200, 7, text=f"- Rejected factors: {len(self.qa_report.get('rejected', []))}", ln=True)
+            pdf.ln(5)
+
+            # Ring 2 Table
+            pdf.set_font("STHeiti", size=12)
+            pdf.cell(200, 10, text="Ring 2: Top 20 Factors by |IC|", ln=True)
+            pdf.set_font("STHeiti", size=9)
+
+            col_widths = [15, 40, 30, 30, 30, 30]
+            headers = ["Rank", "Factor", "Mean IC", "ICIR", "WinRate", "L-S"]
+            for i, h in enumerate(headers):
+                pdf.cell(col_widths[i], 8, h, border=1)
+            pdf.ln()
+
+            for rank, (feat, m) in enumerate(sorted_ic[:20], 1):
+                pdf.cell(col_widths[0], 7, str(rank), border=1)
+                pdf.cell(col_widths[1], 7, feat, border=1)
+                pdf.cell(col_widths[2], 7, f"{m.get('mean_rank_ic', 0):.4f}", border=1)
+                pdf.cell(col_widths[3], 7, f"{m.get('icir', 0):.4f}", border=1)
+                pdf.cell(col_widths[4], 7, f"{m.get('ic_win_rate', 0):.2%}", border=1)
+                pdf.cell(col_widths[5], 7, f"{m.get('long_short', 0):.4f}", border=1)
+                pdf.ln()
+            pdf.ln(5)
+
+            # Ring 7 Summary
+            pdf.set_font("STHeiti", size=12)
+            pdf.cell(200, 10, text="Ring 7: Portfolio Validation", ln=True)
+            pdf.set_font("STHeiti", size=9)
+
+            p_headers = ["Portfolio", "Mean IC", "ICIR", "WinRate", "Turnover"]
+            p_widths = [40, 35, 35, 35, 35]
+            for i, h in enumerate(p_headers):
+                pdf.cell(p_widths[i], 8, h, border=1)
+            pdf.ln()
+
+            for name, m in portfolios.items():
+                pdf.cell(p_widths[0], 7, name, border=1)
+                pdf.cell(p_widths[1], 7, f"{m.get('mean_ic', 0):.4f}", border=1)
+                pdf.cell(p_widths[2], 7, f"{m.get('icir', 0):.4f}", border=1)
+                pdf.cell(p_widths[3], 7, f"{m.get('ic_win_rate', 0):.2%}", border=1)
+                pdf.cell(p_widths[4], 7, f"{m.get('turnover', 0):.4f}", border=1)
+                pdf.ln()
+
+            pdf_path = output_dir / "factor_filter_report.pdf"
+            pdf.output(str(pdf_path))
+            logging.info(f"PDF report saved to {pdf_path}")
+        except Exception as e:
+            logging.error(f"Failed to generate PDF report: {e}")
+
+        # 2. Filtered factor pool parquet
+
         factor_cols = [c for c in self.df.columns if c not in ("datetime", "instrument") and not c.startswith("label")]
         all_cols = ["datetime", "instrument"] + factor_cols + [c for c in self.df.columns if c.startswith("label")]
         final_df = self.df.select([c for c in all_cols if c in self.df.columns])
