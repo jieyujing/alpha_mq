@@ -17,8 +17,7 @@ def config(tmp_path):
             "stages": ["factor_compute", "label_compute", "export", "report"],
         },
         "data": {
-            "qlib_csv": "data/qlib_output/ohlcv",
-            "qlib_bin": str(tmp_path / "qlib_bin"),
+            "parquet_input": str(tmp_path / "parquet"),
             "instruments": "csi1000",
             "start_date": "2020-01-01",
             "end_date": "2020-12-31",
@@ -60,15 +59,12 @@ def make_mock_labels(n_symbols=3, n_days=30):
 def test_pipeline_initialization(config):
     pipeline = Alpha158Pipeline(config)
     assert pipeline.stages == config["pipeline"]["stages"]
-    assert pipeline.qlib_bin == config["data"]["qlib_bin"]
+    assert pipeline.parquet_input == config["data"]["parquet_input"]
 
 
 def test_stage_method_map():
     expected_map = {
-        "merge_gm_data": "merge_gm_data",
-        "ingest_bin": "ingest_bin",
         "factor_compute": "factor_compute",
-        "data_quality_check": "data_quality_check",
         "label_compute": "label_compute",
         "export": "export",
         "report": "generate_report",

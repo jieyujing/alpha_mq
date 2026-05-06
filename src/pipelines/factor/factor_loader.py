@@ -6,6 +6,10 @@ import pandas as pd
 import polars as pl
 from typing import Optional, List
 
+import qlib
+from qlib.data.dataset.handler import DataHandlerLP
+from qlib.data.dataset.loader import StaticDataLoader
+
 
 def _rolling_percentile_rank(s: pl.Series) -> pl.Series:
     """Percentile rank of last value in rolling window (Qlib Rank with pct=True)."""
@@ -181,10 +185,6 @@ class FactorLoader:
         end: str,
         **kwargs
     ) -> pd.DataFrame:
-        import qlib
-        from qlib.data.dataset.handler import DataHandlerLP
-        from qlib.data.dataset.loader import StaticDataLoader
-
         logging.info("Engine: Qlib Adapter (Full 158 Features Implementation)")
 
         # 1. Polars 预计算 158 因子

@@ -1,0 +1,28 @@
+# uv run python scripts/run_pipeline.py --config configs/unified_data.yaml
+pipeline:
+  name: "unified_data"
+  stages:
+    - "download"
+    - "clean"
+    - "align"
+
+version: "1.0"
+
+# GM token (suggested to get from env var GM_TOKEN)
+token: null
+index_code: "SHSE.000852"
+start_date: "2020-01-01"
+end_date: null
+
+# Which downloader modules to enable
+download_modules:
+  - "csi1000"
+  - "fundamentals"
+
+# Directory configuration
+exports_base: "data/exports"
+processed_output: "data/processed"
+output_file: "unified_daily_features.parquet"
+
+data:
+  source_type: "gm"

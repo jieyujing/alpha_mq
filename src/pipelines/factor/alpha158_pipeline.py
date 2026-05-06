@@ -211,6 +211,15 @@ class Alpha158Pipeline(DataPipeline):
         lines.append(f"- **Instruments**: {self.factors_df.index.get_level_values('instrument').nunique()}")
         lines.append("")
 
+        # Label stats
+        if self.labels_dict:
+            lines.append("## Label Statistics")
+            lines.append("")
+            for p, s in self.labels_dict.items():
+                valid_count = s.notna().sum()
+                lines.append(f"- **{p}**: {valid_count} valid samples ({(valid_count/len(s)*100):.1f}%)")
+            lines.append("")
+
         with open(report_path, "w", encoding="utf-8") as f:
             f.write("\n".join(lines))
         logging.info(f"Factor summary saved: {report_path}")

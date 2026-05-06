@@ -42,7 +42,5 @@ packages = ["src"]
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 
-[tool.uv]
-# workaround for rqalpha build failure
-[tool.uv.extra-build-dependencies]
-rqalpha = ["setuptools<70", "wheel", "Cython"]
+# Note: extra-build-dependencies is not a valid uv field. 
+# If rqalpha needs build-time fixes, consider using constraints or build isolation overrides.

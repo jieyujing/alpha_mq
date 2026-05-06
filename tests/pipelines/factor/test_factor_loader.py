@@ -8,8 +8,7 @@ from pipelines.factor.factor_loader import FactorLoader
 
 @pytest.fixture
 def loader():
-    return FactorLoader(qlib_bin_path="data/qlib_bin")
-
+    return FactorLoader(parquet_input="data/parquet/daily", qlib_bin_path="data/qlib_bin")
 
 def make_mock_index(n=10):
     dates = pd.date_range("2020-01-01", periods=n, freq="B")

@@ -60,7 +60,7 @@ def test_fetch_history(mock_exists, mock_data_proxy_class, mock_local_data_sourc
         order_book_id="600000.XSHG",
         bar_count=10000,
         frequency="1d",
-        fields=None,
+        field=None,
         dt=pd.Timestamp("2023-01-10"),
         skip_suspended=True,
         include_now=False
