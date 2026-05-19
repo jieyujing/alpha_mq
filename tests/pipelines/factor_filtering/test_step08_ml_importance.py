@@ -1,4 +1,5 @@
 import polars as pl
+from src.pipelines.factor_filtering.context import FilteringContext
 from src.pipelines.factor_filtering.steps.step08_ml_importance import MLImportanceVerifier
 
 
@@ -23,7 +24,11 @@ def test_ml_importance():
         "factor2": f2,
         "label_20d": label,
     })
+    
+    ctx = FilteringContext(df=df)
+    
     step = MLImportanceVerifier(n_estimators=5)
-    result, report = step.process(df)
+    new_ctx = step.process(ctx)
+    report = new_ctx.reports["ml_report"]
     assert "importance" in report
     assert "factor1" in report["importance"]

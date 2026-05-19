@@ -6,9 +6,11 @@
 from __future__ import annotations
 
 import polars as pl
+from pipelines.factor_filtering.context import FilteringContext
+from pipelines.factor_filtering.steps.base_step import FilteringStep
 
 
-class PortfolioValidator:
+class PortfolioValidator(FilteringStep):
     """多因子组合验证。"""
 
     _META_COLS = {"datetime", "instrument"}
@@ -18,11 +20,14 @@ class PortfolioValidator:
 
     def _factor_cols(self, df: pl.DataFrame) -> list[str]:
         return [
-            c for c in df.columns
+            c
+            for c in df.columns
             if c not in self._META_COLS and not c.startswith("label")
         ]
 
-    def _build_signal(self, df: pl.DataFrame, factor_cols: list[str], weights: dict[str, float]) -> pl.DataFrame:
+    def _build_signal(
+        self, df: pl.DataFrame, factor_cols: list[str], weights: dict[str, float]
+    ) -> pl.DataFrame:
         """构建加权合成信号。"""
         if not weights or not factor_cols:
             return df.with_columns(pl.lit(0.0).alias("signal"))
@@ -38,9 +43,15 @@ class PortfolioValidator:
 
     def _compute_portfolio_ic(self, df: pl.DataFrame, label_col: str) -> dict:
         """计算组合信号的 IC 序列和汇总指标。"""
-        daily = df.group_by("datetime").agg(
-            pl.corr(pl.col("signal"), pl.col(label_col), method="spearman").alias("ic")
-        ).drop_nulls()
+        daily = (
+            df.group_by("datetime")
+            .agg(
+                pl.corr(pl.col("signal"), pl.col(label_col), method="spearman").alias(
+                    "ic"
+                )
+            )
+            .drop_nulls()
+        )
 
         ic_series = daily.select(pl.col("ic")).to_series().drop_nulls().drop_nans()
         if len(ic_series) < 2:
@@ -58,7 +69,9 @@ class PortfolioValidator:
             mean0, mean1 = lag0.mean(), lag1.mean()
             std0, std1 = lag0.std(ddof=0), lag1.std(ddof=0)
             if std0 > 0 and std1 > 0:
-                autocorr = float(((lag0 - mean0) * (lag1 - mean1)).mean() / (std0 * std1))
+                autocorr = float(
+                    ((lag0 - mean0) * (lag1 - mean1)).mean() / (std0 * std1)
+                )
             else:
                 autocorr = 0.0
             turnover = 1.0 - abs(autocorr)
@@ -73,24 +86,43 @@ class PortfolioValidator:
             "n_days": len(ic_series),
         }
 
-    def process(self, df: pl.DataFrame, ic_metrics: dict) -> tuple[pl.DataFrame, dict]:
-        """构建 3 种组合并验证。"""
+    def process(self, ctx: FilteringContext) -> FilteringContext:
+        """构建 3 种组合并在 FilteringContext 中输出验证报告。"""
+        df = ctx.df
+        ic_metrics = ctx.ic_metrics
+
         factor_cols = self._factor_cols(df)
         label_col = next((c for c in df.columns if c.startswith("label")), None)
         if not label_col or not factor_cols:
-            return df, {"error": "no factors or label"}
+            ctx.reports["portfolio_report"] = {"error": "no factors or label"}
+            return ctx
 
-        total_abs_ic = sum(abs(ic_metrics.get(f, {}).get("mean_rank_ic", 0)) for f in factor_cols)
+        total_abs_ic = sum(
+            abs(ic_metrics.get(f, {}).get("mean_rank_ic", 0)) for f in factor_cols
+        )
         total_icir = sum(ic_metrics.get(f, {}).get("icir", 0) for f in factor_cols)
 
         portfolios = {}
         for name, weight_fn in [
             ("equal_weight", lambda f: 1.0 / len(factor_cols)),
-            ("ic_weight", lambda f: abs(ic_metrics.get(f, {}).get("mean_rank_ic", 0)) / max(total_abs_ic, 1e-8)),
-            ("icir_weight", lambda f: ic_metrics.get(f, {}).get("icir", 0) / max(abs(total_icir), 1e-8)),
+            (
+                "ic_weight",
+                lambda f: (
+                    abs(ic_metrics.get(f, {}).get("mean_rank_ic", 0))
+                    / max(total_abs_ic, 1e-8)
+                ),
+            ),
+            (
+                "icir_weight",
+                lambda f: (
+                    ic_metrics.get(f, {}).get("icir", 0) / max(abs(total_icir), 1e-8)
+                ),
+            ),
         ]:
             weights = {f: weight_fn(f) for f in factor_cols}
             sig_df = self._build_signal(df, factor_cols, weights)
             portfolios[name] = self._compute_portfolio_ic(sig_df, label_col)
 
-        return df, {"portfolios": portfolios}
+        ctx.reports["portfolio_report"] = {"portfolios": portfolios}
+
+        return ctx

@@ -9,9 +9,11 @@ from __future__ import annotations
 import numpy as np
 import polars as pl
 from sklearn.cluster import AgglomerativeClustering
+from pipelines.factor_filtering.context import FilteringContext
+from pipelines.factor_filtering.steps.base_step import FilteringStep
 
 
-class FactorClustering:
+class FactorClustering(FilteringStep):
     """基于因子收益序列相关性的层次聚类。"""
 
     _META_COLS = {"datetime", "instrument"}
@@ -22,11 +24,14 @@ class FactorClustering:
 
     def _factor_cols(self, df: pl.DataFrame) -> list[str]:
         return [
-            c for c in df.columns
+            c
+            for c in df.columns
             if c not in self._META_COLS and not c.startswith("label")
         ]
 
-    def _compute_factor_returns(self, df: pl.DataFrame, factor_cols: list[str], label_col: str) -> pl.DataFrame:
+    def _compute_factor_returns(
+        self, df: pl.DataFrame, factor_cols: list[str], label_col: str
+    ) -> pl.DataFrame:
         """计算每个因子每日截面 IC 作为因子收益。"""
         exprs = [
             pl.corr(pl.col(c), pl.col(label_col), method="spearman").alias(c)
@@ -35,7 +40,9 @@ class FactorClustering:
         daily_ic = df.group_by("datetime").agg(exprs).sort("datetime").drop_nulls()
         return daily_ic
 
-    def fit_predict(self, df: pl.DataFrame, factor_cols: list[str], label_col: str) -> dict[str, int]:
+    def fit_predict(
+        self, df: pl.DataFrame, factor_cols: list[str], label_col: str
+    ) -> dict[str, int]:
         """对因子收益序列进行聚类。"""
         if len(factor_cols) < 2:
             return {c: 0 for c in factor_cols}
@@ -63,13 +70,18 @@ class FactorClustering:
 
         return {col: int(lbl) for col, lbl in zip(factor_cols, labels)}
 
-    def process(self, df: pl.DataFrame) -> tuple[pl.DataFrame, dict]:
-        """流水线接口。"""
+    def process(self, ctx: FilteringContext) -> FilteringContext:
+        """运行聚类算法，将聚类报告写入 FilteringContext 中。"""
+        df = ctx.df
         factor_cols = self._factor_cols(df)
         label_col = next((c for c in df.columns if c.startswith("label")), None)
         if not label_col:
-            return df, {"clusters": {}, "n_clusters": 0}
+            ctx.cluster_report = {"clusters": {}, "n_clusters": 0}
+            return ctx
 
         clusters = self.fit_predict(df, factor_cols, label_col)
         n_clusters = len(set(clusters.values()))
-        return df, {"clusters": clusters, "n_clusters": n_clusters}
+
+        ctx.cluster_report = {"clusters": clusters, "n_clusters": n_clusters}
+
+        return ctx

@@ -175,12 +175,12 @@ class FactorLoader:
 
     def load_alpha158(
         self,
-        instruments: str,
+        universe: str,
         start: str,
         end: str,
         **kwargs
     ) -> pd.DataFrame:
-        logging.info("Engine: Qlib Adapter (Full 158 Features Implementation)")
+        logging.info(f"Engine: Qlib Adapter (Full 158 Features Implementation) for Universe: {universe}")
 
         # 1. Polars 预计算 158 因子
         daily_path = os.path.join(self.parquet_input, "daily", "*.parquet")
@@ -189,7 +189,7 @@ class FactorLoader:
         ).filter((pl.col("date") >= start) & (pl.col("date") <= end)).sort(["instrument", "date"])
 
         # 生成时间序号 t，用于线性回归
-        lf = lf.with_columns(pl.int_range(0, pl.count()).over("instrument").alias("t"))
+        lf = lf.with_columns(pl.int_range(0, pl.len()).over("instrument").alias("t"))
 
         # 应用全量表达式
         all_exprs = self._build_all_alpha158_exprs()

@@ -1,4 +1,5 @@
 import polars as pl
+from src.pipelines.factor_filtering.context import FilteringContext
 from src.pipelines.factor_filtering.steps.step06_representative import RepresentativeSelector
 
 
@@ -23,8 +24,14 @@ def test_representative_selection():
         "f3": {"stability_score": 0.9},
     }
 
+    ctx = FilteringContext(df=df)
+    ctx.cluster_report = {"clusters": clusters}
+    ctx.ic_metrics = ic_metrics
+    ctx.stability_report = stability
+
     step = RepresentativeSelector(n_per_cluster=1)
-    result, report = step.process(df, clusters, ic_metrics, stability)
+    new_ctx = step.process(ctx)
+    report = new_ctx.reports["selection_report"]
     assert report["selected_count"] == 2  # 2 clusters, 1 each
-    assert "f1" in result.columns or "f2" in result.columns  # one from cluster 0
-    assert "f3" in result.columns  # cluster 1's only factor
+    assert "f1" in new_ctx.df.columns or "f2" in new_ctx.df.columns  # one from cluster 0
+    assert "f3" in new_ctx.df.columns  # cluster 1's only factor

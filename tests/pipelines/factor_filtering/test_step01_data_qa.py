@@ -1,4 +1,5 @@
 import polars as pl
+from src.pipelines.factor_filtering.context import FilteringContext
 from src.pipelines.factor_filtering.steps.step00_data_qa import DataAndLabelQA
 
 
@@ -9,9 +10,10 @@ def test_inf_replacement():
         "factor1": [float("inf")],
         "label_20d": [0.05],
     })
+    ctx = FilteringContext(df=df, config={"min_coverage": 0.0})
     step = DataAndLabelQA(config={"min_coverage": 0.0})
-    result, report = step.process(df)
-    assert result.filter(pl.col("factor1").is_infinite()).height == 0
+    new_ctx = step.process(ctx)
+    assert new_ctx.df.filter(pl.col("factor1").is_infinite()).height == 0
 
 
 def test_constant_factor_detection():
@@ -22,8 +24,10 @@ def test_constant_factor_detection():
         "factor_var": [1.0, 2.0, 3.0],
         "label_20d": [0.01, 0.02, 0.03],
     })
+    ctx = FilteringContext(df=df)
     step = DataAndLabelQA()
-    result, report = step.process(df)
+    new_ctx = step.process(ctx)
+    report = new_ctx.reports["qa_report"]
     assert "factor_const" in report["constant_factors"]
     assert "factor_var" not in report["constant_factors"]
 
@@ -36,7 +40,8 @@ def test_low_coverage_rejection():
         "factor_bad": [1.0] * 10 + [None] * 10,
         "label_20d": [0.01] * 20,
     })
+    ctx = FilteringContext(df=df, config={"min_coverage": 0.8})
     step = DataAndLabelQA(config={"min_coverage": 0.8})
-    result, report = step.process(df)
-    assert "factor_bad" not in result.columns
-    assert "factor_good" in result.columns
+    new_ctx = step.process(ctx)
+    assert "factor_bad" not in new_ctx.df.columns
+    assert "factor_good" in new_ctx.df.columns

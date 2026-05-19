@@ -34,7 +34,7 @@ class LabelBuilder:
 
     def load_close_prices(
         self,
-        instruments: Union[str, List[str]],
+        symbols: Union[str, List[str]],
         start: str,
         end: str,
         buffer_days: int = 30,
@@ -43,7 +43,7 @@ class LabelBuilder:
         从 Parquet 宽表加载 close 价格，带前后缓冲（用于 forward return 计算）。
 
         buffer_days: 向后多加载的天数，确保未来 N 日 return 不全部为 NaN。
-        instruments: symbol 列表（此处为了简化，由于我们直接扫描所有 parquet，可以全量加载然后再过滤，或依赖输入 parquet 的自然内容）
+        symbols: symbol 列表（此处为了简化，由于我们直接扫描所有 parquet，可以全量加载然后再过滤，或依赖输入 parquet 的自然内容）
         """
         extended_end = (datetime.strptime(end, "%Y-%m-%d") + timedelta(days=buffer_days)).strftime("%Y-%m-%d")
         
@@ -67,9 +67,9 @@ class LabelBuilder:
         lf = lf.filter((pl.col("date") >= start) & (pl.col("date") <= extended_end))
         lf = lf.select(["date", "instrument", "close"])
         
-        # 按需过滤 instruments
-        if isinstance(instruments, list) and len(instruments) > 0:
-            lf = lf.filter(pl.col("instrument").is_in(instruments))
+        # 按需过滤 symbols
+        if isinstance(symbols, list) and len(symbols) > 0:
+            lf = lf.filter(pl.col("instrument").is_in(symbols))
             
         df = lf.collect().to_pandas()
         

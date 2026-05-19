@@ -8,9 +8,11 @@ score = 0.30*ICIR_norm + 0.20*monotonicity + 0.20*long_short
 from __future__ import annotations
 
 import polars as pl
+from pipelines.factor_filtering.context import FilteringContext
+from pipelines.factor_filtering.steps.base_step import FilteringStep
 
 
-class RepresentativeSelector:
+class RepresentativeSelector(FilteringStep):
     """簇内代表因子选择。"""
 
     _META_COLS = {"datetime", "instrument"}
@@ -18,13 +20,15 @@ class RepresentativeSelector:
     def __init__(self, config: dict | None = None, n_per_cluster: int | None = None):
         self.config = config or {}
         self.n_per_cluster: int = (
-            n_per_cluster if n_per_cluster is not None
+            n_per_cluster
+            if n_per_cluster is not None
             else self.config.get("n_per_cluster", 2)
         )
 
     def _factor_cols(self, df: pl.DataFrame) -> list[str]:
         return [
-            c for c in df.columns
+            c
+            for c in df.columns
             if c not in self._META_COLS and not c.startswith("label")
         ]
 
@@ -37,11 +41,13 @@ class RepresentativeSelector:
             return [0.5] * len(values)
         return [(v - min_v) / rng for v in values]
 
-    def process(
-        self, df: pl.DataFrame, clusters: dict[str, int],
-        ic_metrics: dict, stability: dict
-    ) -> tuple[pl.DataFrame, dict]:
-        """选择每簇的代表因子。"""
+    def process(self, ctx: FilteringContext) -> FilteringContext:
+        """选择每簇的代表因子，并剔除未选中的因子。"""
+        df = ctx.df
+        clusters = ctx.cluster_report.get("clusters", {})
+        ic_metrics = ctx.ic_metrics
+        stability = ctx.stability_report
+
         factor_cols = self._factor_cols(df)
 
         # 簇分组
@@ -54,6 +60,7 @@ class RepresentativeSelector:
         selection_detail = []
 
         import numpy as np
+
         for cid in sorted(cluster_to_factors):
             factors = cluster_to_factors[cid]
             scores = []
@@ -66,13 +73,15 @@ class RepresentativeSelector:
                 ls = float(np.nan_to_num(abs(m.get("long_short", 0)), nan=0.0))
                 stab = float(np.nan_to_num(s.get("stability_score", 0.5), nan=0.5))
 
-                scores.append({
-                    "factor": f,
-                    "icir": icir,
-                    "monotonicity": mono,
-                    "long_short": ls,
-                    "stability": stab,
-                })
+                scores.append(
+                    {
+                        "factor": f,
+                        "icir": icir,
+                        "monotonicity": mono,
+                        "long_short": ls,
+                        "stability": stab,
+                    }
+                )
 
             if len(scores) == 0:
                 continue
@@ -96,12 +105,14 @@ class RepresentativeSelector:
             top = scores[: self.n_per_cluster]
             for t in top:
                 selected.append(t["factor"])
-                selection_detail.append({
-                    "factor": t["factor"],
-                    "cluster": cid,
-                    "score": t["score"],
-                    "rank_in_cluster": top.index(t) + 1,
-                })
+                selection_detail.append(
+                    {
+                        "factor": t["factor"],
+                        "cluster": cid,
+                        "score": t["score"],
+                        "rank_in_cluster": top.index(t) + 1,
+                    }
+                )
 
         # 剔除未选中的因子
         cols_to_drop = [c for c in factor_cols if c not in selected]
@@ -113,4 +124,8 @@ class RepresentativeSelector:
             "selection_detail": selection_detail,
             "selected_count": len(selected),
         }
-        return df, report
+
+        ctx.df = df
+        ctx.reports["selection_report"] = report
+
+        return ctx

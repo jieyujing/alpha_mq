@@ -2,97 +2,56 @@
 import pytest
 import numpy as np
 import pandas as pd
-from unittest.mock import patch, MagicMock
+import polars as pl
+from unittest.mock import patch
 from pipelines.factor.factor_loader import FactorLoader
 
 
 @pytest.fixture
-def loader():
-    return FactorLoader(parquet_input="data/parquet/daily", qlib_bin_path="data/qlib_bin")
+def dummy_lazyframe():
+    # 构造足够的样本（比如 70 天）以支持 rolling 60 的特征计算
+    dates = pd.date_range("2020-01-01", periods=100, freq="B").strftime("%Y-%m-%d").tolist()
+    n = len(dates)
+    
+    # 模拟真实价量数据，防止 std 等除以 0 或计算产生 NaN
+    np.random.seed(42)
+    close_prices = 10.0 + np.cumsum(np.random.randn(n) * 0.1)
+    open_prices = close_prices + np.random.randn(n) * 0.05
+    high_prices = np.maximum(open_prices, close_prices) + np.random.rand(n) * 0.1
+    low_prices = np.minimum(open_prices, close_prices) - np.random.rand(n) * 0.1
+    volume = np.random.randint(100, 1000, size=n).astype(float)
+    amount = volume * close_prices
 
-def make_mock_index(n=10):
-    dates = pd.date_range("2020-01-01", periods=n, freq="B")
-    return pd.MultiIndex.from_product(
-        [dates, ["SH600000"]], names=["datetime", "instrument"]
-    )
+    data = {
+        "date": dates,
+        "open": open_prices.tolist(),
+        "close": close_prices.tolist(),
+        "high": high_prices.tolist(),
+        "low": low_prices.tolist(),
+        "volume": volume.tolist(),
+        "amount": amount.tolist(),
+        "filepath": ["/path/to/daily/SH600000.parquet"] * n
+    }
+    return pl.LazyFrame(data)
 
 
-def test_load_alpha158_returns_dataframe(loader):
-    """Alpha158 handler should return a MultiIndex DataFrame with factors."""
-    idx = make_mock_index()
-    mock_data = pd.DataFrame({
-        "KMID": np.random.randn(len(idx)),
-        "KLEN": np.random.randn(len(idx)),
-    }, index=idx)
+def test_load_alpha158_returns_dataframe(dummy_lazyframe):
+    """Alpha158 Polars pipeline should compute exactly 158 features without errors."""
+    loader = FactorLoader(parquet_input="/dummy/path")
 
-    mock_handler = MagicMock()
-    mock_handler.fetch.return_value = mock_data
-
-    with patch("pipelines.factor.factor_loader.qlib") as mock_qlib:
-        with patch("pipelines.factor.factor_loader.Alpha158", return_value=mock_handler):
-            df = loader.load_alpha158(
-                instruments="csi1000",
-                start="2020-01-01",
-                end="2020-12-31",
-            )
+    with patch("polars.scan_parquet", return_value=dummy_lazyframe):
+        df = loader.load_alpha158(
+            universe="csi1000",
+            start="2020-01-01",
+            end="2020-05-01",
+        )
 
     assert isinstance(df, pd.DataFrame)
     assert isinstance(df.index, pd.MultiIndex)
+    assert df.index.names == ["datetime", "instrument"]
+    
+    # 验证是否返回了 158 个因子（除去 datetime 和 instrument 物理主键后列数为 158）
+    assert df.shape[1] == 158
     assert "KMID" in df.columns
-    assert "KLEN" in df.columns
-    mock_qlib.init.assert_called_once()
-
-
-def test_load_alpha158_drops_multiindex_label_columns(loader):
-    """Alpha158 MultiIndex label columns should be removed without breaking."""
-    idx = make_mock_index()
-    columns = pd.MultiIndex.from_tuples([
-        ("feature", "KMID"),
-        ("feature", "KLEN"),
-        ("label", "LABEL0"),
-    ])
-    mock_data = pd.DataFrame(np.random.randn(len(idx), len(columns)), index=idx, columns=columns)
-
-    mock_handler = MagicMock()
-    mock_handler.fetch.return_value = mock_data
-
-    with patch("pipelines.factor.factor_loader.qlib") as mock_qlib:
-        with patch("pipelines.factor.factor_loader.Alpha158", return_value=mock_handler):
-            df = loader.load_alpha158(
-                instruments="csi1000",
-                start="2020-01-01",
-                end="2020-12-31",
-            )
-
-    assert ("feature", "KMID") in df.columns
-    assert ("feature", "KLEN") in df.columns
-    assert ("label", "LABEL0") not in df.columns
-    mock_qlib.init.assert_called_once()
-
-
-def test_load_with_extra_fields(loader):
-    """Extra fields should be appended to Alpha158 factors."""
-    idx = make_mock_index()
-    mock_alpha = pd.DataFrame({"f0": np.ones(len(idx))}, index=idx)
-    mock_extra = pd.DataFrame({"pe_ttm": np.full(len(idx), 10.0)}, index=idx)
-
-    mock_handler = MagicMock()
-    mock_handler.fetch.return_value = mock_alpha
-
-    # Mock the D.features call at the module level where it's imported
-    mock_d = MagicMock()
-    mock_d.features.return_value = mock_extra
-
-    with patch("pipelines.factor.factor_loader.qlib"):
-        with patch("pipelines.factor.factor_loader.Alpha158", return_value=mock_handler):
-            with patch("qlib.data.D", mock_d):
-                df = loader.load_alpha158(
-                    instruments="csi1000",
-                    start="2020-01-01",
-                    end="2020-12-31",
-                    extra_fields=["pe_ttm"],
-                )
-
-    assert "f0" in df.columns
-    assert "pe_ttm" in df.columns
-    assert df.shape[1] == 2
+    assert "ROC5" in df.columns
+    assert "IMXD5" in df.columns

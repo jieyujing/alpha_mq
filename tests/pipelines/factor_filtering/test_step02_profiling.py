@@ -1,4 +1,5 @@
 import polars as pl
+from src.pipelines.factor_filtering.context import FilteringContext
 from src.pipelines.factor_filtering.steps.step02_profiling import SingleFactorProfiler
 
 
@@ -9,8 +10,10 @@ def test_ic_computation():
         "factor1": [1.0, 2.0, 3.0],
         "label_20d": [0.01, 0.02, 0.03],
     })
+    ctx = FilteringContext(df=df)
     step = SingleFactorProfiler(label_col="label_20d")
-    result, metrics = step.process(df)
+    new_ctx = step.process(ctx)
+    metrics = new_ctx.ic_metrics
     assert "factor1" in metrics
     assert "mean_rank_ic" in metrics["factor1"]
 
@@ -22,6 +25,8 @@ def test_group_returns():
         "factor1": [float(i) for i in range(10)],
         "label_20d": [float(i) / 10 for i in range(10)],
     })
+    ctx = FilteringContext(df=df)
     step = SingleFactorProfiler(label_col="label_20d")
-    _, metrics = step.process(df)
+    new_ctx = step.process(ctx)
+    metrics = new_ctx.ic_metrics
     assert "group_returns" in metrics["factor1"]

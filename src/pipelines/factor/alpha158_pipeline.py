@@ -43,7 +43,7 @@ class Alpha158Pipeline(DataPipeline):
 
         # 数据输入配置
         self.parquet_input = data_cfg.get("parquet_input", "data/parquet")
-        self.instruments = data_cfg.get("instruments", "csi1000")
+        self.universe = data_cfg.get("universe") or data_cfg.get("instruments", "csi1000")
         self.start_date = data_cfg.get("start_date", "2020-01-01")
         self.end_date = data_cfg.get("end_date") or datetime.now().strftime("%Y-%m-%d")
 
@@ -58,7 +58,7 @@ class Alpha158Pipeline(DataPipeline):
         """Alpha158 handler -> DataFrame。"""
         loader = FactorLoader(parquet_input=self.parquet_input)
         self.factors_df = loader.load_alpha158(
-            instruments=self.instruments,
+            universe=self.universe,
             start=self.start_date,
             end=self.end_date,
         )
@@ -78,7 +78,7 @@ class Alpha158Pipeline(DataPipeline):
 
         label_builder = LabelBuilder(parquet_input=self.parquet_input)
         close_df = label_builder.load_close_prices(
-            instruments=symbol_list,
+            symbols=symbol_list,
             start=start,
             end=end,
             buffer_days=max(periods) + 5
@@ -207,7 +207,7 @@ class Alpha158Pipeline(DataPipeline):
         lines.append(f"- **Total factors**: {self.factors_df.shape[1]}")
         lines.append(f"- **Total samples**: {self.factors_df.shape[0]}")
         lines.append(f"- **Date range**: {self.factors_df.index.get_level_values('datetime').min()} to {self.factors_df.index.get_level_values('datetime').max()}")
-        lines.append(f"- **Instruments**: {self.factors_df.index.get_level_values('instrument').nunique()}")
+        lines.append(f"- **Symbols**: {self.factors_df.index.get_level_values('instrument').nunique()}")
         lines.append("")
 
         # Label stats

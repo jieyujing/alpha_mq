@@ -5,33 +5,32 @@
 
 from __future__ import annotations
 
-import polars as pl
+from pipelines.factor_filtering.context import FilteringContext
+from pipelines.factor_filtering.steps.base_step import FilteringStep
 
 
-class CrossSectionFilter:
+class CrossSectionFilter(FilteringStep):
     """基于 Ring 2 指标执行因子过滤。"""
 
     _META_COLS = {"datetime", "instrument"}
 
     def __init__(self, config: dict | None = None, **kwargs):
         self.config = config or {}
-        self.min_abs_ic: float = kwargs.get("min_abs_ic", self.config.get("min_abs_ic", 0.01))
-        self.min_coverage: float = kwargs.get("min_coverage", self.config.get("min_coverage", 0.60))
+        self.min_abs_ic: float = kwargs.get(
+            "min_abs_ic", self.config.get("min_abs_ic", 0.01)
+        )
+        self.min_coverage: float = kwargs.get(
+            "min_coverage", self.config.get("min_coverage", 0.60)
+        )
 
-    def process(
-        self, df: pl.DataFrame, ic_metrics: dict
-    ) -> tuple[pl.DataFrame, dict]:
-        """根据 IC 指标过滤因子列。
+    def process(self, ctx: FilteringContext) -> FilteringContext:
+        """根据 FilteringContext.ic_metrics 过滤因子列。"""
+        df = ctx.df
+        ic_metrics = ctx.ic_metrics
 
-        Args:
-            df: 预处理后的 DataFrame。
-            ic_metrics: Ring 2 输出的 {因子名: 指标字典}。
-
-        Returns:
-            (过滤后的 DataFrame, 筛选报告)
-        """
         factor_cols = [
-            c for c in df.columns
+            c
+            for c in df.columns
             if c not in self._META_COLS and not c.startswith("label")
         ]
 
@@ -41,7 +40,7 @@ class CrossSectionFilter:
         # Find max n_days for coverage normalization
         max_days = max(
             (v.get("n_days", 0) for v in ic_metrics.values() if v.get("n_days")),
-            default=1
+            default=1,
         )
 
         for col in factor_cols:
@@ -71,4 +70,7 @@ class CrossSectionFilter:
             "rejected_count": len(rejected),
         }
 
-        return df, report
+        ctx.df = df
+        ctx.reports["filter_report"] = report
+
+        return ctx

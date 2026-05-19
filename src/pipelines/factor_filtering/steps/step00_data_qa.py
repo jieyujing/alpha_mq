@@ -10,9 +10,11 @@
 from __future__ import annotations
 
 import polars as pl
+from pipelines.factor_filtering.context import FilteringContext
+from pipelines.factor_filtering.steps.base_step import FilteringStep
 
 
-class DataAndLabelQA:
+class DataAndLabelQA(FilteringStep):
     """数据与标签卫生检查步骤。"""
 
     _META_COLS = {"datetime", "instrument"}
@@ -24,16 +26,23 @@ class DataAndLabelQA:
 
     def _factor_cols(self, df: pl.DataFrame) -> list[str]:
         return [
-            c for c in df.columns
+            c
+            for c in df.columns
             if c not in self._META_COLS and not c.startswith("label")
         ]
 
     def _label_cols(self, df: pl.DataFrame) -> list[str]:
         return [c for c in df.columns if c.startswith("label")]
 
-    def process(self, df: pl.DataFrame) -> tuple[pl.DataFrame, dict]:
-        """执行卫生检查，返回干净 DataFrame 和 QA 报告。"""
-        report: dict = {"coverage": {}, "constant_factors": [], "label_stats": {}, "rejected": []}
+    def process(self, ctx: FilteringContext) -> FilteringContext:
+        """执行卫生检查，返回干净 FilteringContext 并附加 QA 报告。"""
+        df = ctx.df
+        report: dict = {
+            "coverage": {},
+            "constant_factors": [],
+            "label_stats": {},
+            "rejected": [],
+        }
 
         # 1. inf/-inf → null
         factor_cols = self._factor_cols(df)
@@ -67,13 +76,20 @@ class DataAndLabelQA:
             report["label_stats"][col] = {
                 "mean": df.select(pl.col(col).mean()).item(),
                 "std": df.select(pl.col(col).std()).item(),
-                "null_pct": 1.0 - df.select(pl.col(col).drop_nulls().len()).item() / height,
+                "null_pct": 1.0
+                - df.select(pl.col(col).drop_nulls().len()).item() / height,
             }
 
         # 4. 低覆盖率因子剔除
-        cols_to_drop = [col for col, cov in report["coverage"].items() if cov < self.min_coverage]
+        cols_to_drop = [
+            col for col, cov in report["coverage"].items() if cov < self.min_coverage
+        ]
         report["rejected"].extend((c, "low_coverage") for c in cols_to_drop)
         if cols_to_drop:
             df = df.drop(cols_to_drop)
 
-        return df, report
+        # 更新 context 的状态
+        ctx.df = df
+        ctx.reports["qa_report"] = report
+
+        return ctx

@@ -6,9 +6,11 @@
 from __future__ import annotations
 
 import polars as pl
+from pipelines.factor_filtering.context import FilteringContext
+from pipelines.factor_filtering.steps.base_step import FilteringStep
 
 
-class SingleFactorProfiler:
+class SingleFactorProfiler(FilteringStep):
     """单因子截面 IC 计算与稳定性评估。"""
 
     _META_COLS = {"datetime", "instrument"}
@@ -20,51 +22,72 @@ class SingleFactorProfiler:
 
     def _factor_cols(self, df: pl.DataFrame) -> list[str]:
         return [
-            c for c in df.columns
+            c
+            for c in df.columns
             if c not in self._META_COLS and not c.startswith("label")
         ]
 
     def compute_daily_ic(self, df: pl.DataFrame, factor_col: str) -> pl.DataFrame:
         """计算每日截面 Rank IC。"""
-        return df.group_by("datetime").agg(
-            pl.corr(pl.col(factor_col), pl.col(self.label_col), method="spearman").alias("ic")
-        ).drop_nulls()
+        return (
+            df.group_by("datetime")
+            .agg(
+                pl.corr(
+                    pl.col(factor_col), pl.col(self.label_col), method="spearman"
+                ).alias("ic")
+            )
+            .drop_nulls()
+        )
 
     def compute_group_returns(self, df: pl.DataFrame, factor_col: str) -> dict:
         """按因子值分 N 组，计算每组平均 label（代理收益）。"""
         n = self.n_groups
         ranked = df.with_columns(
-            (pl.col(factor_col).rank(method="average").over("datetime")
-             / pl.col(factor_col).count().over("datetime") * n - 1)
+            (
+                pl.col(factor_col).rank(method="average").over("datetime")
+                / pl.col(factor_col).count().over("datetime")
+                * n
+                - 1
+            )
             .clip(0, n - 1)
             .floor()
             .cast(pl.Int64)
             .alias("group")
         )
-        group_avg = (ranked
-            .filter(pl.col("group").is_not_null())
+        group_avg = (
+            ranked.filter(pl.col("group").is_not_null())
             .group_by("group")
             .agg(pl.col(self.label_col).mean().alias("mean_label"))
-            .sort("group"))
+            .sort("group")
+        )
 
         return {
-            f"Q{int(row['group'])+1}": row["mean_label"]
+            f"Q{int(row['group']) + 1}": row["mean_label"]
             for row in group_avg.iter_rows(named=True)
-            if row['group'] is not None and row['mean_label'] is not None
+            if row["group"] is not None and row["mean_label"] is not None
         }
 
-    def process(self, df: pl.DataFrame) -> tuple[pl.DataFrame, dict]:
+    def process(self, ctx: FilteringContext) -> FilteringContext:
         """计算所有因子的画像指标。"""
+        df = ctx.df
         factor_cols = self._factor_cols(df)
         metrics = {}
 
         for col in factor_cols:
             daily_ic = self.compute_daily_ic(df, col)
-            ic_series = daily_ic.select(pl.col("ic")).to_series().drop_nulls().drop_nans()
+            ic_series = (
+                daily_ic.select(pl.col("ic")).to_series().drop_nulls().drop_nans()
+            )
 
             if len(ic_series) < 2:
-                metrics[col] = {"mean_rank_ic": 0.0, "icir": 0.0, "ic_win_rate": 0.0,
-                                "group_returns": {}, "long_short": 0.0, "monotonicity": 0.0}
+                metrics[col] = {
+                    "mean_rank_ic": 0.0,
+                    "icir": 0.0,
+                    "ic_win_rate": 0.0,
+                    "group_returns": {},
+                    "long_short": 0.0,
+                    "monotonicity": 0.0,
+                }
                 continue
 
             mean_ic = ic_series.mean()
@@ -80,6 +103,7 @@ class SingleFactorProfiler:
                 gs = list(group_ret.keys())
                 vs = list(group_ret.values())
                 from scipy.stats import spearmanr
+
                 mono, _ = spearmanr(gs, vs)
             else:
                 mono = 0.0
@@ -94,7 +118,8 @@ class SingleFactorProfiler:
                 "n_days": len(ic_series),
             }
 
-        return df, metrics
+        ctx.ic_metrics = metrics
+        return ctx
 
 
 # Backwards compatibility alias

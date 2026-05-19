@@ -1,4 +1,5 @@
 import polars as pl
+from src.pipelines.factor_filtering.context import FilteringContext
 from src.pipelines.factor_filtering.steps.step07_portfolio import PortfolioValidator
 
 
@@ -21,8 +22,13 @@ def test_portfolio_validation():
         "label_20d": label,
     })
     ic_metrics = {"factor1": {"mean_rank_ic": 0.05, "icir": 0.3}}
+    
+    ctx = FilteringContext(df=df)
+    ctx.ic_metrics = ic_metrics
+    
     step = PortfolioValidator()
-    result, report = step.process(df, ic_metrics)
+    new_ctx = step.process(ctx)
+    report = new_ctx.reports["portfolio_report"]
     assert "portfolios" in report
     assert "equal_weight" in report["portfolios"]
     assert "mean_ic" in report["portfolios"]["equal_weight"]
