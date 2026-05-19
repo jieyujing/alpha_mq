@@ -1,18 +1,17 @@
-import sys
 import os
 import pandas as pd
-import numpy as np
 import riskfolio as rp
 import quantstats as qs
-from datetime import datetime, timedelta
-from typing import Dict, List, Optional
+from datetime import datetime
+from typing import Dict, List
 from tqdm import tqdm
 
 try:
     from gm.api import history, set_token
 except ImportError:
     history = None
-    set_token = lambda x: None
+    def set_token(x):
+        return None
 
 # Set the default token for gm sdk
 set_token("478dc4635c5198dbfcc962ac3bb209e5327edbff")
@@ -135,7 +134,7 @@ def get_optimal_weights(returns: pd.DataFrame, model: str = 'EW', obj: str = 'Mi
 
         return weights['weights']
     
-    except Exception as e:
+    except Exception:
         # Graceful fallback mechanisms
         # print(f"  [Optimizer Warning] {model} failed: {e}. Falling back...")
         if model in ['HRP', 'HERC', 'NCO', 'ERC']:
@@ -175,7 +174,7 @@ def run_rolling_backtest(prices: pd.DataFrame, models: List[str], window: int = 
     # Filter to only those in the range after initial window
     valid_rebalance_dates = [d for d in rebalance_dates if d >= dates[window-1]]
     
-    results = {model: pd.Series(dtype=float) for model in models}
+    {model: pd.Series(dtype=float) for model in models}
     
     # Initialize weights for each model at the start
     current_weights = {model: None for model in models}
@@ -392,7 +391,7 @@ def main():
     token = "478dc4635c5198dbfcc962ac3bb209e5327edbff"
     set_token(token)
     
-    print(f"Starting ETF Portfolio Pipeline...")
+    print("Starting ETF Portfolio Pipeline...")
     print(f"Period: {start_date} to {end_date}")
     print(f"Symbols: {len(symbols)}")
     print(f"Models: {models}")

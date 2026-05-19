@@ -52,13 +52,13 @@ split:
 
 rolling:
   mode: "expanding"
-  step_months: 3
+  step_months: 6
   val_period_months: 3
   embargo_days: 5
 
 model:
-  names: ["lgbm_regressor", "lgbm_ranker", "lgbm_classifier"]
-  target_labels: ["label_1d", "label_5d", "label_10d", "label_20d"]
+  names: ["lgbm_classifier"]
+  target_labels: ["label_5d"]
   primary_label: "label_5d"
   params:
     lgbm_regressor:

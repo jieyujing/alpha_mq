@@ -1,5 +1,4 @@
 """QualityReporter 测试"""
-import pytest
 from pathlib import Path
 
 

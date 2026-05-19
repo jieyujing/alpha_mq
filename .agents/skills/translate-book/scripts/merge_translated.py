@@ -4,9 +4,7 @@ merge_translated.py - Merge translated chunks into final output files
 """
 
 import os
-import sys
 import glob
-import re
 
 def merge_chunks(temp_dir, output_file):
     """Merge all output chunks into a single markdown file"""
@@ -140,7 +138,7 @@ def main():
 
         # Get file sizes
         md_size = os.path.getsize(output_md)
-        print(f"\n=== Translation Complete ===")
+        print("\n=== Translation Complete ===")
         print(f"Markdown file: {output_md}")
         print(f"Size: {md_size:,} bytes ({md_size/1024/1024:.2f} MB)")
 

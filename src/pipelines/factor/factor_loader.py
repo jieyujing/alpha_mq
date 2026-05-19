@@ -4,11 +4,6 @@ import os
 import numpy as np
 import pandas as pd
 import polars as pl
-from typing import Optional, List
-
-import qlib
-from qlib.data.dataset.handler import DataHandlerLP
-from qlib.data.dataset.loader import StaticDataLoader
 
 
 def _rolling_percentile_rank(s: pl.Series) -> pl.Series:
@@ -215,19 +210,5 @@ class FactorLoader:
         df_pd = df_pd.set_index(["datetime", "instrument"]).sort_index()
         df_pd = df_pd[alpha_names]
 
-        # 2. 包装进 Qlib Handler
-        qlib.init(log_level=logging.ERROR)
-        data_loader = StaticDataLoader(df_pd)
-
-        handler = DataHandlerLP(
-            instruments=None,
-            start_time=start,
-            end_time=end,
-            data_loader=data_loader,
-            learn_processors=[],
-            infer_processors=[],
-        )
-
-        factors = handler.fetch()
-        logging.info(f"Successfully computed {factors.shape[1]} factors and adapted to Qlib.")
-        return factors
+        logging.info(f"Successfully computed {df_pd.shape[1]} factors.")
+        return df_pd

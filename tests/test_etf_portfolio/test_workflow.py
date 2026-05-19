@@ -1,5 +1,4 @@
 # tests/test_etf_portfolio/test_workflow.py
-import pytest
 from src.etf_portfolio.workflow import DownloadWorkflow, HistoryWorkflow
 
 class MockDataSource:

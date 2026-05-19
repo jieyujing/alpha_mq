@@ -1,8 +1,6 @@
 """增量检测逻辑测试"""
-import pytest
 from datetime import datetime
 from pathlib import Path
-from dataclasses import dataclass
 
 
 # 先定义期望的数据类结构（测试将验证这些类存在）
@@ -32,7 +30,6 @@ def test_symbol_gap_dataclass():
 
 
 import tempfile
-import os
 import pandas as pd
 
 

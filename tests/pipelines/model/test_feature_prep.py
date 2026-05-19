@@ -4,7 +4,6 @@ import pandas as pd
 import pytest
 from pipelines.model.feature_prep import (
     cross_section_rank_normalize,
-    cross_section_zscore,
     winsorize_label_by_date_quantile,
     make_rank_label_by_date,
     make_binary_label_by_date,

@@ -1,7 +1,6 @@
 # coding=utf-8
 from __future__ import print_function, absolute_import
 import pandas as pd
-import numpy as np
 import riskfolio as rp
 from gm.api import *
 from datetime import datetime, timedelta
@@ -285,7 +284,7 @@ def handle_monthly_rebalance(context):
     # 3. 优化权重
     if not eligible_symbols:
         context.blueprint = {context.fallback_asset: 1.0}
-        print(f"Blueprint updated. No trending assets, 100% in fallback.")
+        print("Blueprint updated. No trending assets, 100% in fallback.")
     else:
         # returns_df 此时是完整的（剔除了含有 NaN 的列），用 dropna() 去掉第一行的 NaN
         returns_df = valid_history[eligible_symbols].pct_change().dropna()

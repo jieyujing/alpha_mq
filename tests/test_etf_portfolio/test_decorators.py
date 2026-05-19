@@ -1,6 +1,5 @@
 # tests/test_etf_portfolio/test_decorators.py
 import pytest
-import time
 from src.etf_portfolio.decorators import with_retry, with_rate_limit
 
 class MockLimiter:

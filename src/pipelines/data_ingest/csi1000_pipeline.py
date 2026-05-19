@@ -3,11 +3,10 @@ GM → Parquet 数据接入管道
 
 实现 CSI 1000 指数成分股数据从 GM 格式到 Parquet 宽表的完整转换流程。
 """
-import yaml
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional
+from typing import List
 
 from pipelines.base import DataPipeline
 from pipelines.data_ingest.parquet_ingestor import ParquetIngestor

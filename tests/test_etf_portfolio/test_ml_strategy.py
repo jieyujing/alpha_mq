@@ -1,6 +1,5 @@
 import pandas as pd
 import numpy as np
-import pytest
 from src.etf_portfolio.ml_strategy import assemble_portfolio
 
 def test_assemble_portfolio():

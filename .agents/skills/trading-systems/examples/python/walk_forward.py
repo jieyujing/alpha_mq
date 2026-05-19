@@ -17,7 +17,7 @@ WFA 步骤:
 
 import numpy as np
 import pandas as pd
-from typing import Dict, List, Tuple, Optional, Callable
+from typing import Dict, List, Tuple, Callable
 from dataclasses import dataclass
 from abc import ABC, abstractmethod
 
@@ -194,7 +194,7 @@ class RollingWFA(WalkForwardAnalyzer):
         n_data = len(self.data)
         
         is_size = int(self.window_size * self.is_ratio)
-        oos_size = self.window_size - is_size
+        self.window_size - is_size
         
         start = 0
         window_id = 0
@@ -254,7 +254,7 @@ class AnchoredWFA(WalkForwardAnalyzer):
         
         while window_size <= n_data:
             is_size = int(window_size * self.is_ratio)
-            oos_size = window_size - is_size
+            window_size - is_size
             
             is_start = 0  # 锚定在起点
             is_end = is_size
@@ -393,17 +393,17 @@ def example_usage():
     
     print(f"窗口数量：{rolling_results['n_windows']}")
     print(f"OOS 总交易数：{rolling_results['total_oos_trades']}")
-    print(f"\n平均 IS 指标:")
+    print("\n平均 IS 指标:")
     for key, value in rolling_results['avg_is_metrics'].items():
         if isinstance(value, float):
             print(f"  {key}: {value:.4f}")
     
-    print(f"\n平均 OOS 指标:")
+    print("\n平均 OOS 指标:")
     for key, value in rolling_results['avg_oos_metrics'].items():
         if isinstance(value, float):
             print(f"  {key}: {value:.4f}")
     
-    print(f"\nOOS/IS 比率 (稳健性):")
+    print("\nOOS/IS 比率 (稳健性):")
     for key, value in rolling_results['oos_is_ratio'].items():
         if isinstance(value, float):
             quality = "✓ 稳健" if value > 0.5 else "⚠ 可能过拟合"
@@ -429,7 +429,7 @@ def example_usage():
     print(f"窗口数量：{anchored_results['n_windows']}")
     print(f"OOS 总交易数：{anchored_results['total_oos_trades']}")
     
-    print(f"\n平均 OOS 指标:")
+    print("\n平均 OOS 指标:")
     for key, value in anchored_results['avg_oos_metrics'].items():
         if isinstance(value, float):
             print(f"  {key}: {value:.4f}")

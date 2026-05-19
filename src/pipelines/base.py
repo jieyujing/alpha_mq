@@ -8,7 +8,6 @@ class DataPipeline(ABC):
         "download": "download",
         "validate": "validate",
         "clean": "clean",
-        "ingest": "ingest_to_qlib",
     }
 
     def __init__(self, config: dict):
@@ -58,6 +57,3 @@ class DataPipeline(ABC):
     def clean(self):
         ...
 
-    def ingest_to_qlib(self):
-        """默认空实现，子类可通过 STAGE_METHOD_MAP 覆盖映射"""
-        pass

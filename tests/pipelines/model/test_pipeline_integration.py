@@ -2,13 +2,11 @@
 import pytest
 import numpy as np
 import pandas as pd
-from pathlib import Path
 
-from pipelines.model.feature_prep import FeaturePreprocessor, winsorize_label_by_date_quantile
+from pipelines.model.feature_prep import FeaturePreprocessor
 from pipelines.model.evaluator import compute_ic_by_date, orient_signal, compute_model_metrics
-from pipelines.model.backtest import topk_backtest, compute_backtest_metrics
+from pipelines.model.backtest import topk_backtest
 from pipelines.model.linear_model import LinearModel
-from pipelines.model.lgbm_regressor import LGBMRegModel
 
 
 @pytest.fixture

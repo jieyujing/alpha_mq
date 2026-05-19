@@ -7,7 +7,7 @@ import logging
 import pandas as pd
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List
 from tqdm import tqdm
 
 from data_download.base import GMDownloader

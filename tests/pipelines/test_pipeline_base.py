@@ -1,5 +1,4 @@
 # tests/pipelines/test_base.py
-import pytest
 from pipelines.base import DataPipeline
 
 

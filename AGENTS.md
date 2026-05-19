@@ -36,3 +36,17 @@
 - **openclaw-skill** - Openclaw 技能
 - **reflexivity** - 自省
 - **internal-comms** - 内部通信
+
+## Agent skills
+
+### Issue tracker
+
+Issues and PRDs for this repo live as GitHub issues. Use the `gh` CLI for all operations. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Using standard 5 triage labels (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context layout with a global `CONTEXT.md` at the repo root and past architectural decisions in `docs/adr/`. See `docs/agents/domain.md`.

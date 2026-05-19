@@ -83,7 +83,7 @@ def test_load_with_extra_fields(loader):
     mock_d = MagicMock()
     mock_d.features.return_value = mock_extra
 
-    with patch("pipelines.factor.factor_loader.qlib") as mock_qlib:
+    with patch("pipelines.factor.factor_loader.qlib"):
         with patch("pipelines.factor.factor_loader.Alpha158", return_value=mock_handler):
             with patch("qlib.data.D", mock_d):
                 df = loader.load_alpha158(

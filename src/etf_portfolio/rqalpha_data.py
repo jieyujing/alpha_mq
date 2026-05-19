@@ -1,7 +1,7 @@
 # src/etf_portfolio/rqalpha_data.py
 import os
 import logging
-from typing import Optional, Any
+from typing import Optional
 import pandas as pd
 from rqalpha.data.base_data_source import BaseDataSource
 from rqalpha.data.data_proxy import DataProxy

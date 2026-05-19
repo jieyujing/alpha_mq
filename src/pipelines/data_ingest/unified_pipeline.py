@@ -9,7 +9,7 @@ import os
 import polars as pl
 from pathlib import Path
 from datetime import datetime
-from typing import List, Optional
+from typing import List
 
 from pipelines.base import DataPipeline
 

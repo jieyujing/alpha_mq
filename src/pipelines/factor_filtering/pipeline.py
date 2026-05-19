@@ -56,7 +56,6 @@ class FactorFilteringPipeline(DataPipeline):
     def download(self): ...
     def validate(self): return []
     def clean(self): ...
-    def ingest_to_qlib(self): ...
 
     # --- Stage: load ---
 
@@ -274,7 +273,6 @@ class FactorFilteringPipeline(DataPipeline):
         # 1.1 PDF report
         try:
             from fpdf import FPDF
-            import numpy as np
 
             pdf = FPDF()
             pdf.set_auto_page_break(auto=True, margin=15)

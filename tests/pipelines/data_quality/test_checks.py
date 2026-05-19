@@ -1,6 +1,5 @@
 # tests/pipelines/data_quality/test_checks.py
 """数据检查函数测试"""
-import pytest
 import tempfile
 import pandas as pd
 from pathlib import Path

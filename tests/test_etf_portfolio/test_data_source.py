@@ -1,6 +1,6 @@
 # tests/test_etf_portfolio/test_data_source.py
 import pytest
-from src.etf_portfolio.data_source import GMDataSource, DataSource
+from src.etf_portfolio.data_source import GMDataSource
 
 # 检查 gm 模块是否可用
 pytest.importorskip("gm", reason="gm SDK not installed, skipping GMDataSource tests")
@@ -27,7 +27,7 @@ def test_data_source_protocol():
 def test_gm_data_source_calls_limiter():
     """验证 GMDataSource 调用流控器"""
     limiter = MockRateLimiter()
-    source = GMDataSource(limiter=limiter, token="test-token")
+    GMDataSource(limiter=limiter, token="test-token")
     limiter.wait()
     assert len(limiter.calls) == 1
 

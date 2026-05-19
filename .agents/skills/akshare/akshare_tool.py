@@ -8,7 +8,6 @@ import argparse
 import sys
 from datetime import datetime
 import akshare as ak
-import pandas as pd
 
 class AkshareTool:
     """Akshare 数据工具封装类"""
@@ -42,8 +41,8 @@ class AkshareTool:
             
             # 构建输出
             output = [f"## {row['名称']} ({row['代码']}) 实时行情\n"]
-            output.append(f"| 项目 | 数值 |")
-            output.append(f"|------|------|")
+            output.append("| 项目 | 数值 |")
+            output.append("|------|------|")
             output.append(f"| 最新价 | {row['最新价']} |")
             output.append(f"| 涨跌幅 | {row['涨跌幅']}% |")
             output.append(f"| 涨跌额 | {row['涨跌额']} |")

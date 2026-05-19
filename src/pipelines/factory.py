@@ -1,5 +1,5 @@
 import logging
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 from src.etf_portfolio.data_source import GMDataSource, RateLimiter
 from src.etf_portfolio.rqalpha_data import RQAlphaDataSource
 

@@ -36,7 +36,6 @@ class Alpha158Pipeline(DataPipeline):
     def download(self): ...
     def validate(self): return []
     def clean(self): ...
-    def ingest_to_qlib(self): ...
 
     def __init__(self, config: dict):
         super().__init__(config)
@@ -77,7 +76,7 @@ class Alpha158Pipeline(DataPipeline):
         start = str(date_range.min().date())
         end = str(date_range.max().date())
 
-        label_builder = LabelBuilder(qlib_bin_path=self.parquet_input)
+        label_builder = LabelBuilder(parquet_input=self.parquet_input)
         close_df = label_builder.load_close_prices(
             instruments=symbol_list,
             start=start,

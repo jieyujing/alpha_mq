@@ -107,7 +107,7 @@ class AlphalensReportGenerator:
         # L/S Sharpe
         # Cumulative spread return
         q_max = factor_data["factor_quantile"].max()
-        returns_unstacked = factor_data.reset_index().pivot(
+        factor_data.reset_index().pivot(
             index="date", columns="asset", values=period_col
         )  # Simplified
         # Actually Alphalens factor_returns is already calculated

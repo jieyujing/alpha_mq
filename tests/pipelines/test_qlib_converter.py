@@ -1,8 +1,7 @@
-import pytest
 import pandas as pd
 import tempfile
 from pathlib import Path
-from pipelines.data_ingest.qlib_converter import OhlcvConverter, FeatureConverter, PitConverter, QlibIngestor
+from pipelines.data_ingest.qlib_converter import OhlcvConverter, PitConverter, QlibIngestor
 
 
 class TestOhlcvConverter:
@@ -97,5 +96,5 @@ class TestQlibIngestor:
         """测试 Ingestor 初始化"""
         with tempfile.TemporaryDirectory() as tmpdir:
             qlib_dir = Path(tmpdir) / "qlib_bin"
-            ingestor = QlibIngestor(str(qlib_dir))
+            QlibIngestor(str(qlib_dir))
             assert qlib_dir.exists()

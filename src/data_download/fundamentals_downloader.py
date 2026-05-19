@@ -2,7 +2,7 @@ import logging
 import pandas as pd
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List
 from tqdm import tqdm
 
 from data_download.base import GMDownloader
@@ -178,7 +178,7 @@ class FundamentalsDownloader(GMDownloader):
                 # Ensure date columns are parsed for merge/dedup if needed, 
                 # but usually strings are fine if format is consistent.
                 # However, gm-api returns datetime objects in DF.
-                time_col = cat_config.get("time_col", "pub_date")
+                cat_config.get("time_col", "pub_date")
                 # Deduplicate by symbol and pub_date (or rpt_date?)
                 # Fundamentals usually use (symbol, rpt_date, pub_date) as unique key
                 subset_cols = [c for c in ["symbol", "pub_date", "rpt_date"] if c in merged.columns]

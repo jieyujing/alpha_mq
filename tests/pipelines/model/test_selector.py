@@ -1,5 +1,3 @@
-import math
-from types import SimpleNamespace
 
 import pytest
 

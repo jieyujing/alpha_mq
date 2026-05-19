@@ -623,7 +623,7 @@ def _generate_title_page(pdf: PdfPages, label_name: str, results_with_data: list
     ax.axis("off")
 
     lines = []
-    lines.append(f"AlphaLens Tear Sheet")
+    lines.append("AlphaLens Tear Sheet")
     lines.append(f"Label: {label_name}")
     lines.append(f"Generated: {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')}")
     lines.append("")

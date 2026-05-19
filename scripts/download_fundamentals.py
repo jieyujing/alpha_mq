@@ -7,7 +7,6 @@ import logging
 import os
 import time
 from pathlib import Path
-import pandas as pd
 
 from gm.api import set_token, stk_get_fundamentals_income, stk_get_fundamentals_balance, stk_get_fundamentals_cashflow
 

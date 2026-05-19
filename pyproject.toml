@@ -17,7 +17,6 @@ dependencies = [
     "pandas>=3.0.2",
     "polars>=1.39.3",
     "pyarrow>=23.0.1",
-    "pyqlib>=0.9.7",
     "pytest>=9.0.3",
     "quantstats>=0.0.81",
     "reportlab>=4.5.0",
@@ -36,11 +35,16 @@ alphalens = { git = "https://gitee.com/yunjinqi/alphalens.git" }
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+[dependency-groups]
+dev = [
+    "ruff>=0.15.13",
+]
+
 [tool.hatch.build.targets.wheel]
 packages = ["src"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 
-# Note: extra-build-dependencies is not a valid uv field. 
-# If rqalpha needs build-time fixes, consider using constraints or build isolation overrides.
+[tool.uv.extra-build-dependencies]
+rqalpha = ["setuptools>=68.0.0,<70.0.0", "wheel"]

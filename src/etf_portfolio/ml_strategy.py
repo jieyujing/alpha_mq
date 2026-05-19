@@ -2,8 +2,7 @@ import pandas as pd
 import numpy as np
 import lightgbm as lgb
 from tqdm import tqdm
-from typing import Tuple, Dict, List
-import os
+from typing import Tuple
 from datetime import datetime
 
 # Import components from existing pipeline
@@ -261,7 +260,7 @@ def main():
     end_date = datetime.now().strftime('%Y-%m-%d')
     start_date = "2018-01-01" 
     
-    print(f"Starting ETF ML Portfolio Pipeline (LightGBM)...")
+    print("Starting ETF ML Portfolio Pipeline (LightGBM)...")
     print(f"Period: {start_date} to {end_date}")
     
     # 2. Fetch Data

@@ -10,9 +10,8 @@ from datetime import datetime, timedelta
 class LabelBuilder:
     """基于 pandas 构建多周期 forward return 标签。"""
 
-    def __init__(self, qlib_bin_path: str):
-        # 兼容原来的参数名，实际为 parquet_input
-        self.parquet_input = qlib_bin_path
+    def __init__(self, parquet_input: str):
+        self.parquet_input = parquet_input
 
     def compute_labels(
         self,

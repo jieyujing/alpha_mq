@@ -1,5 +1,4 @@
 import pandas as pd
-import numpy as np
 import alphalens
 import os
 import matplotlib.pyplot as plt

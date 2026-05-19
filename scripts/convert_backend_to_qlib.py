@@ -5,7 +5,6 @@
 用法: uv run python scripts/convert_backend_to_qlib.py
 """
 import logging
-import struct
 import numpy as np
 import pandas as pd
 from pathlib import Path
@@ -112,7 +111,7 @@ def convert_to_qlib_bin(df: pd.DataFrame):
             binary.tofile(bin_path)
 
     # 写 calendar 索引
-    cal_bin = calendars_dir / "day.bin"
+    calendars_dir / "day.bin"
     # day.bin 不是必须的，qlib 只读 day.txt
 
     logging.info(f"Done! Binary: {QLIB_BIN_DIR}, CSV: {QLIB_CSV_DIR}")

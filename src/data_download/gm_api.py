@@ -6,7 +6,7 @@ GM API 封装
 import time
 import logging
 from functools import wraps
-from typing import Callable, Optional
+from typing import Callable
 
 
 class RateLimiter:

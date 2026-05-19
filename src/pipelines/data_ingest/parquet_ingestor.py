@@ -8,7 +8,7 @@ Parquet 数据合并模块
 import logging
 import pandas as pd
 from pathlib import Path
-from typing import Optional, List
+from typing import List
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 

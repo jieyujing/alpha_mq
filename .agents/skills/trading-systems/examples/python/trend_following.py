@@ -11,7 +11,7 @@
 
 import pandas as pd
 import numpy as np
-from typing import Tuple, List, Dict
+from typing import List, Dict
 
 
 def calculate_atr(data: pd.DataFrame, period: int = 14) -> pd.Series:
@@ -137,7 +137,6 @@ class TrendFollowingSystem:
         )
         
         # 初始化
-        cash = self.initial_capital
         self.position = 0
         self.trades = []
         equity_curve = [self.initial_capital]

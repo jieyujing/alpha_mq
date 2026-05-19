@@ -3,7 +3,7 @@
 数据质量检查函数
 """
 from pathlib import Path
-from typing import List, Optional
+from typing import List
 import pandas as pd
 import glob
 
